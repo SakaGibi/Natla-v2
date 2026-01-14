@@ -33,7 +33,7 @@ async function runServer(){
         // every client connection will be managed by socketManager
         io.on('connection', socket => {
             console.log(`[Socket] New client connected: ${socket.id}`);
-            socketManager.handleSocketConnection(socket, io);
+            socketManager.handleConnection(socket, io);
         });
 
         // step-3 : Start the HTTP server

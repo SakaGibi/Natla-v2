@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <!-- Meta & Config -->
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self' http://localhost:5173 ws://localhost:5173; 
+             script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.socket.io; 
+             connect-src 'self' http://localhost:5173 ws://localhost:5173 http://localhost:3030 ws://localhost:3030; 
+             style-src 'self' 'unsafe-inline'; 
+             img-src 'self' blob: data:; 
+             media-src 'self' blob: data:;">
+    <title>Natla</title>
+    <link rel="stylesheet" href="main.css">
+</head>
+
+<body>
+
+    <!-- Sidebar Section -->
+    <div class="sidebar">
+        <!-- Header Row -->
+        <div class="header-row">
+            <div class="profile-section">
+                <h1>Natla</h1>
+            </div>
+            <div style="position: relative;">
+                <button id="btnSettings" title="Sunucu Ayarları">⚙️</button>
+                <div id="updateNotification" class="update-notification" style="display: none;">
+                    <div class="notch"></div>
+                    <div class="content">
+                        <span>Yeni sürüm var!</span>
+                        <button id="btnDismissUpdate">Tamam</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Modal -->
+        <div id="passwordModal"
+            style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 9999; justify-content: center; align-items: center; flex-direction: column;">
+            <div
+                style="background: #2b2b2b; padding: 30px; border-radius: 12px; border: 1px solid #444; text-align: left; box-shadow: 0 10px 30px rgba(0,0,0,0.5); width: 400px; position: relative;">
+                <!-- Close Button -->
+                <button id="btnCloseSettings"
+                    style="position: absolute; top: 10px; right: 10px; background: none; border: none; color: #888; cursor: pointer; font-size: 20px;">✖</button>
+                <h3 style="color: #fff; margin-bottom: 20px; font-family: sans-serif; text-align: center;">⚙️ Sunucu
+                    Ayarları</h3>
+
+                <!-- Server Inputs -->
+                <label style="color: #bbb; font-size: 12px; display:block; margin-bottom:5px;">Sunucu Adresi
+                    (ws://...)</label>
+                <input type="text" id="serverInput" value="" placeholder="ws://ip_adresi:port"
+                    style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #555; background: #1a1a1a; color: white; margin-bottom: 15px; outline: none;">
+
+                <label style="color: #bbb; font-size: 12px; display:block; margin-bottom:5px;">Erişim Anahtarı</label>
+                <input type="password" id="keyInput" placeholder="Sunucu Şifresi..."
+                    style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #555; background: #1a1a1a; color: white; margin-bottom: 20px; outline: none;">
+
+                <button id="btnSaveKey"
+                    style="background: #2ecc71; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%; margin-bottom: 20px;">AYARLARI
+                    KAYDET</button>
+
+                <!-- Network Stats Section (Moved from Overlay) -->
+                <div style="border-top: 1px solid #444; padding-top: 15px; margin-bottom: 5px;">
+                    <label style="color: #bbb; font-size: 12px; display:block; margin-bottom:5px;">Ağ
+                        İstatistikleri</label>
+                    <div id="networkStats"
+                        style="background: #111; color: #0f0; padding: 10px; border-radius: 6px; font-family: monospace; font-size: 11px; border: 1px dashed #333; min-height: 40px;">
+                        Bağlantı bekleniyor...
+                    </div>
+                </div>
+
+                <!-- Update Section -->
+                <div id="updateSection" style="border-top: 1px solid #444; padding-top: 15px;">
+                    <label style="color: #bbb; font-size: 12px; display:block; margin-bottom:10px;">Uygulama
+                        Güncelleme</label>
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <button id="btnCheckUpdate"
+                            style="background: #3498db; color: white; border: none; padding: 8px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold;">Güncellemeleri
+                            Kontrol Et</button>
+                        <button id="btnInstallUpdate"
+                            style="display: none; background: #e67e22; color: white; border: none; padding: 8px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold;">Güncellemeyi
+                            Yükle ve Yeniden Başlat</button>
+                        <span id="updateStatus" style="font-size: 11px; color: #888; text-align: center;">Sürüm
+                            yükleniyor...</span>
+
+                        <!-- Reset Soundpad -->
+                        <button id="btnResetSoundpad"
+                            style="background: #e74c3c; color: white; border: none; padding: 8px; border-radius: 6px; cursor: pointer; font-size: 12px; margin-top: 5px;">Soundpad'i
+                            Sıfırla (Varsayılan)</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Soundpad Edit Modal -->
+        <div id="soundpadModal"
+            style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 10000; justify-content: center; align-items: center; flex-direction: column;">
+            <div
+                style="background: #2b2b2b; padding: 25px; border-radius: 12px; border: 1px solid #444; width: 350px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+                <h3 style="color: #fff; margin-bottom: 20px; font-family: sans-serif;">Buton Düzenle</h3>
+
+                <!-- File Selection Row -->
+                <div style="margin-bottom: 15px; text-align: left;">
+                    <label style="color: #bbb; font-size: 12px; display:block; margin-bottom:5px;">Ses Dosyası</label>
+                    <div style="display: flex; gap: 8px;">
+                        <div id="selectedFileName"
+                            style="flex: 1; padding: 10px; background: #1a1a1a; border: 1px solid #555; border-radius: 6px; color: #888; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                            Mevcut dosya korunacak
+                        </div>
+                        <button id="btnSelectSoundFile"
+                            style="background: #4834d4; color: white; border: none; padding: 0 15px; border-radius: 6px; cursor: pointer; font-size: 18px;">📁</button>
+                    </div>
+                </div>
+
+                <!-- Name Input Row -->
+                <div style="margin-bottom: 25px; text-align: left;">
+                    <label style="color: #bbb; font-size: 12px; display:block; margin-bottom:5px;">Buton İsmi</label>
+                    <input type="text" id="soundpadNameInput" placeholder="Buton İsmi..."
+                        style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #555; background: #1a1a1a; color: white; outline: none; box-sizing: border-box;">
+                </div>
+
+                <div style="display: flex; gap: 10px; justify-content: center;">
+                    <button id="btnSoundpadCancel"
+                        style="background: #555; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer;">İptal</button>
+                    <button id="btnSoundpadSave"
+                        style="background: #2196F3; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold;">Kaydet</button>
+                </div>
+            </div>
+        </div>
+        <!-- Status & Name Input -->
+        <div class="status-name-row" style="position: relative;">
+            <div id="roomPreview"
+                style="font-size: 12px; color: #aaa;  flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-right: 5px; pointer-events: none;">
+                Sunucuya bağlanılıyor...
+            </div>
+            <div style="display: flex; align-items: center;">
+                <input type="file" id="avatarInput" accept="image/*" style="display: none;">
+                <img id="myAvatarDisplay" src="assets/default-avatar.png" class="my-avatar-btn"
+                    title="Fotoğraf Değiştir">
+                <input type="text" id="username" placeholder="Adınız" class="compact-input">
+            </div>
+        </div>
+
+        <!-- Connection Status -->
+        <div id="status" style="display:none;"></div>
+
+        <!-- Room Selection & Join Controls -->
+        <div class="join-row" style="display: flex; gap: 5px;">
+            <select id="roomSelect" class="compact-input fixed-room-select">
+                <option value="genel">Genel</option>
+                <option value="FBI">FBI</option>
+                <option value="2">1</option>
+                <option value="1">2</option>
+            </select>
+
+            <button id="btnConnect" class="fixed-join-btn">Katıl</button>
+
+            <!-- Active Call Controls -->
+            <div id="activeControls" style="display: none; flex: 1; gap: 5px; justify-content: flex-end;">
+                <button id="btnToggleMic" title="Mikrofonu Aç/Kapat" style="flex:1;">🎤</button>
+                <button id="btnToggleSound" title="Sesi Aç/Kapat" style="flex:1;">🔊</button>
+                <button id="btnDisconnect" title="Ayrıl" style="flex:1;">✖</button>
+            </div>
+        </div>
+
+        <!-- Audio Settings Panel -->
+        <div id="settingsPanel">
+            <!-- Input/Output Selection -->
+            <div class="slider-group">
+                <label>🎤 Giriş:</label>
+                <select id="micSelect" class="device-select">
+                    <option value="">Varsayılan Mikrofon</option>
+                </select>
+            </div>
+            <div class="slider-group">
+                <label>🎧 Çıkış:</label>
+                <select id="speakerSelect" class="device-select">
+                    <option value="">Varsayılan Hoparlör</option>
+                </select>
+            </div>
+            <!-- Volume Controls -->
+            <div class="slider-group">
+                <label>🎤 Mic Ses:</label>
+                <input type="range" id="micVolume" min="0" max="300" value="100">
+                <span id="micVal" class="slider-val">100%</span>
+            </div>
+            <div class="slider-group">
+                <label>🎧 Genel Ses:</label>
+                <input type="range" id="masterVolume" min="0" max="300" value="100">
+                <span id="masterVal" class="slider-val">100%</span>
+            </div>
+        </div>
+
+        <!-- Users & Soundpad Section -->
+        <div id="users">
+            <!-- Soundpad Grid -->
+            <div id="soundpadArea">
+                <button class="soundpad-btn">1</button>
+                <button class="soundpad-btn">2</button>
+                <button class="soundpad-btn">3</button>
+                <button class="soundpad-btn">4</button>
+                <button class="soundpad-btn">5</button>
+                <button class="soundpad-btn">6</button>
+                <button class="soundpad-btn">7</button>
+                <button class="soundpad-btn">8</button>
+                <button class="soundpad-btn">9</button>
+                <button class="soundpad-btn">10</button>
+                <button class="soundpad-btn">11</button>
+                <button class="soundpad-btn">12</button>
+                <button class="soundpad-btn">13</button>
+                <button class="soundpad-btn">14</button>
+                <button class="soundpad-btn">15</button>
+                <button class="soundpad-btn">16</button>
+            </div>
+
+            <!-- User List -->
+            <div class="user-list-header">
+                <h3>Bağlı Kullanıcılar</h3>
+                <div class="user-list-actions">
+                    <button id="btnToggleCam" title="Kamerayı Aç/Kapat" disabled>📷</button>
+                    <button id="btnShareScreen" title="Ekran Paylaş" disabled>
+                        🖥️ Paylaş
+                    </button>
+                </div>
+            </div>
+            <div id="userList"></div>
+        </div>
+    </div>
+
+    <!-- Chat Area -->
+    <div class="chat-area">
+        <!-- Messages -->
+        <div id="chatHistory">
+            <div class="message received"
+                style="align-self:center; background:var(--input-bg); border-bottom-left-radius: 12px; margin-top: auto;">
+                Odaya hoş geldiniz!
+                <br>
+                Yardım için /help
+            </div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="chat-input-container">
+            <input type="file" id="fileInput" style="display:none" />
+            <input type="text" id="msgInput" placeholder="Bir mesaj yaz..." disabled>
+            <button id="btnAttach">📁</button>
+            <button id="btnSend" disabled>></button>
+        </div>
+    </div>
+
+    <!-- Audio Container -->
+    <div id="audioContainer"></div>
+
+    <!-- Stream Modal -->
+    <div id="streamModal" class="stream-modal" style="display: none;">
+        <div class="stream-header">
+            <span id="streamerName">Yayın</span>
+            <button id="btnCloseStream">Kapat ✖</button>
+        </div>
+        <div class="stream-content">
+            <video id="largeVideoPlayer" autoplay playsinline></video>
+        </div>
+    </div>
+
+    <!-- Main Script -->
+    <script type="module" src="renderer/index.js"></script>
+</body>
+
+</html>

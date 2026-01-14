@@ -16,14 +16,14 @@ function handleConnection(socket, io) {
     socket.on('joinRoom', async ({ roomId }, callback) => {
         try {
             // get or create a mediasoup Router for this room
-            const router = await sfuManager.getOrCreateRouter(roomId);
+            const router = await sfuManager.getOrCreateRoom(roomId);
 
             // initialize peer state
             peers.set(socket.id, {
                 roomId,
-                transports: [],
-                producers: [],
-                consumers: []
+                transports: new Map(),
+                producers: new Map(),
+                consumers: new Map(),
             });
 
             // SFU requires the client to know the server's RTP capabilities
@@ -60,9 +60,9 @@ function handleConnection(socket, io) {
     
     // step-3 : connect Transport
     // client side creates its own transport and sends DLTS parameters to link with server
-    socket.on('connectTransport', async ({ transpoırtId, dtlsParameters } ) => {
+    socket.on('connectTransport', async ({ transportId, dtlsParameters } ) => {
         const peer = peers.get(socket.id);
-        const transport = peer.transports.get(transpoırtId);
+        const transport = peer.transports.get(transportId);
 
         if (transport) {
             await transport.connect({ dtlsParameters });
@@ -78,7 +78,7 @@ function handleConnection(socket, io) {
             const transport = peer.transports.get(transportId);
 
             // create a producer on the server
-            const producer = await transport.procude({ kind, rtpParameters });
+            const producer = await transport.produce({ kind, rtpParameters });
             peer.producers.set(producer.id, producer);
 
             // inform the client of the new producer's id
