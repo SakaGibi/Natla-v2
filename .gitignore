@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Build and Electron
+dist/
+release/
+*.asar
+
+# Environment Variables (Kritik: AWS anahtarları veya özel IP'ler buraya girer)
+.env
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Mediasoup build files
+server/lib/
+
+# notes
+mimari.txt
