@@ -81,9 +81,41 @@ async function createWebRtcTransport(router) {
     };
 }
 
+/**
+ * Create a Consumer to receive media from a specific Producer
+ * @param {Object} router - The room's router
+ * @param {Object} transport - The receiver's transport
+ * @param {string} producerId - The ID of the media source
+ * @param {Object} rtpCapabilities - The receiver's device capabilities
+ */
+async function createConsumer(router, transport, producerId, rtpCapabilities) {
+    // check if the router can consume this producer based on client's device capabilities
+    if (!router.canConsume({ producerId, rtpCapabilities })) {
+        console.warn('[SFU] Cannot consume: Invalid capabilities');
+        return;
+    }
+
+    const consumer = await transport.consume({
+        producerId,
+        rtpCapabilities,
+        paused: true, // best practice: start paused and resume after client is ready
+    });
+
+    return {
+        params: {
+            id: consumer.id,
+            producerId: producerId,
+            kind: consumer.kind,
+            rtpParameters: consumer.rtpParameters,
+        },
+        consumer
+    };
+}
+
 module.exports = {
     initMediasoupWorkers,
     getOrCreateRoom,
     createWebRtcTransport,
-    rooms,
+    createConsumer,
+    rooms
 };

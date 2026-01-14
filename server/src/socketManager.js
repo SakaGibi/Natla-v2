@@ -93,6 +93,51 @@ function handleConnection(socket, io) {
         }
     });
 
+    // step-5 : consume media
+    // client requests to recive a specific media track (audio/video)
+    socket.on('consume', async ({ transportId, producerId, rtpCapabilities }, callback) => {
+        try {
+            const peer = peers.get(socket.id);
+            const { router } = sfuManager.rooms.get(peer.roomId);
+            const transport = peer.transports.get(transportId);
+
+            // create consumer on the server
+            const { params, consumer } = await sfuManager.createConsumer(
+                router,
+                transport,
+                producerId,
+                rtpCapabilities
+            );
+            
+            // store consumer locally
+            peer.consumers.set(consumer.id, consumer);
+
+            // handle consumer close event
+            consumer.on('transportclose', () => {
+                consumer.close();
+                peer.consumers.delete(consumer.id);
+            });
+
+            // send parameters to client to create their local consumer
+            callback(params);
+        } catch (error) {
+            console.error('Consume Error:', error);
+            callback({ error: error.message });
+        }
+    });
+
+    // step-6 : resume producer
+    // client consumers start paused. client calls this after local setup
+    socket.on('consumerResume', async ({ consumerId }) => {
+        const peer = peers.get(socket.id);
+        const consumer = peer.consumers.get(consumerId);
+
+        if (consumer) {
+            await consumer.resume();
+            console.log(`[SFU] Consumer ${consumerId} resumed for ${socket.id}`);
+        }
+    });
+
     // handle disconnection
     // clean up all mediasoup objects when a user leaves
     socket.on('disconnect', () => {

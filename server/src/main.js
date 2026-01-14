@@ -1,9 +1,9 @@
 const express = require('express');
 const http = require('http');
-const {server} = require('socket.io');
+const socketio = require('socket.io');
 const config = require('../config');
-const sfuManager = require('./sfu.manager');
-const socketManager = require('./socket.manager');
+const sfuManager = require('./sfuManager');
+const socketManager = require('./socketManager');
 
 /**
  * Main Server Class
@@ -14,7 +14,7 @@ async function runServer(){
     const server = http.createServer(app);
 
     // Initialize Socket.io with CORS enabled
-    const io = new server.Server(server, {
+    const io = new socketio.Server(server, {
         cors: {
             origin: '*',
             methods: ['GET', 'POST']
