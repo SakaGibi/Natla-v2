@@ -13,12 +13,13 @@ function handleConnection(socket, io) {
 
     // step-1 : join a room
     // client requests to join a specific room (e.g. 'room1', 'room2', etc.)
-    socket.on('joinRoom', async ({ roomId }, callback) => {
+    socket.on('joinRoom', async ({ roomId, displayName }, callback) => {
         try {
             const router = await sfuManager.getOrCreateRoom(roomId);
 
             peers.set(socket.id, {
                 roomId,
+                displayName: displayName || `User-${socket.id.substr(0, 4)}`,
                 transports: new Map(),
                 producers: new Map(),
                 consumers: new Map(),
@@ -29,7 +30,10 @@ function handleConnection(socket, io) {
             peers.forEach((peerData, peerSocketId) => {
                 if (peerData.roomId === roomId && peerSocketId !== socket.id) {
                     peerData.producers.forEach((_, producerId) => {
-                        existingProducers.push(producerId);
+                        existingProducers.push({
+                            producerId,
+                            displayName: peerData.displayName
+                        });
                     });
                 }
             });
@@ -100,7 +104,10 @@ function handleConnection(socket, io) {
             // inform the client of the new producer's id
             callback({ id: producer.id });
 
-            socket.to(peer.roomId).emit('new-producer', { producerId: producer.id });
+            socket.to(peer.roomId).emit('new-producer', {
+                producerId: producer.id,
+                displayName: peer.displayName
+            });
             console.log(`[SFU] User ${socket.id} is now PRODUCING ${kind}`);
         } catch (error) {
             console.error('Produce Error:', error);

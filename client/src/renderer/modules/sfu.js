@@ -159,8 +159,8 @@ class SFUManager {
             }
 
             remoteAudio.srcObject = stream;
-            remoteAudio.controls = true;
-            remoteAudio.style.display = 'block';
+            remoteAudio.controls = false;
+            remoteAudio.style.display = 'none'; // Completely hide it, we have our own UI
 
             // 6. PLAY: Handle browser autoplay restrictions
             // Wait for metadata to ensure we are ready to play

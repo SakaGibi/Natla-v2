@@ -37,9 +37,9 @@ class SocketManager {
      * @param {string} roomId - The room name (room1, room2, etc.)
      * @returns {Promise} - Returns server's RTP Capabilities
      */
-    joinRoom(roomId) {
+    joinRoom(roomId, displayName) {
         return new Promise((resolve, reject) => {
-            this.socket.emit('joinRoom', { roomId }, (response) => {
+            this.socket.emit('joinRoom', { roomId, displayName }, (response) => {
                 if (response.error) {
                     reject(response.error);
                 } else {
