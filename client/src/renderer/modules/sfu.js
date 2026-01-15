@@ -5,6 +5,8 @@
 
 import { Device } from 'mediasoup-client';
 import { socketManager } from './socket.js';
+import { uiManager } from './ui.js';
+import { audioAnalyzer } from './audioAnalyzer.js';
 
 class SFUManager {
     constructor() {
@@ -81,6 +83,11 @@ class SFUManager {
 
             // 6. Start producing the track
             this.producer = await this.sendTransport.produce({ track });
+
+            // Start local audio analysis for the meter
+            audioAnalyzer.analyze('me', this.localStream, (level) => {
+                uiManager.updateAudioLevel('me', level);
+            });
 
             console.log('[SFU] Started producing track:', this.producer.id);
             return this.producer;
@@ -168,6 +175,12 @@ class SFUManager {
                 try {
                     await remoteAudio.play();
                     console.log(`[SFU] Audio started for producer: ${producerId}`);
+
+                    // Start audio analysis for the remote peer's meter
+                    audioAnalyzer.analyze(producerId, stream, (level) => {
+                        uiManager.updateAudioLevel(producerId, level);
+                    });
+
                 } catch (error) {
                     console.warn('[SFU] Autoplay prevented:', error);
                     // Create a manual play button

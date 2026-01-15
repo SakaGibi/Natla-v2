@@ -11,6 +11,24 @@ const peers = new Map();
 
 function handleConnection(socket, io) {
 
+    // step-0 : get room stats (preview mode)
+    socket.on('getRoomStats', ({ roomId }, callback) => {
+        console.log(`[Socket] getRoomStats requested for room: ${roomId}`);
+        try {
+            const users = [];
+            peers.forEach((peerData) => {
+                if (peerData.roomId === roomId) {
+                    users.push(peerData.displayName);
+                }
+            });
+            console.log(`[Socket] Sending stats for ${roomId}:`, users);
+            callback({ users });
+        } catch (error) {
+            console.error(`[Socket] getRoomStats error:`, error);
+            callback({ error: error.message });
+        }
+    });
+
     // step-1 : join a room
     // client requests to join a specific room (e.g. 'room1', 'room2', etc.)
     socket.on('joinRoom', async ({ roomId, displayName }, callback) => {
@@ -24,6 +42,8 @@ function handleConnection(socket, io) {
                 producers: new Map(),
                 consumers: new Map(),
             });
+
+            socket.join(roomId); // Crucial for room signaling
 
             // Collect existing producers in the room to send to the new joiner
             const existingProducers = [];
@@ -45,6 +65,10 @@ function handleConnection(socket, io) {
             });
 
             console.log(`[Socket] User ${socket.id} joined room: ${roomId}`);
+
+            // Broadcast room update to all clients for live preview
+            io.emit('room-update', { roomId });
+
         } catch (error) {
             console.error(`[Socket] joinRoom error: ${error}`);
             callback({ error: error.message });
@@ -72,7 +96,7 @@ function handleConnection(socket, io) {
         }
     });
 
-    // step-3 : connect Transport
+    // step-3 : connect Transpot
     // client side creates its own transport and sends DLTS parameters to link with server
     socket.on('connectTransport', async ({ transportId, dtlsParameters }) => {
         try {
@@ -171,11 +195,17 @@ function handleConnection(socket, io) {
             console.log(`[Socket] User ${socket.id} disconnected. Cleaning up SFU resources.`);
 
             // close all producers, consumers, and transports
-            peer.producers.forEach(p => p.close());
+            peer.producers.forEach((p, producerId) => {
+                socket.to(peer.roomId).emit('producer-closed', { producerId, displayName: peer.displayName });
+                p.close();
+            });
             peer.transports.forEach(t => t.close());
 
             // remove peer from local state
             peers.delete(socket.id);
+
+            // Broadcast room update to all clients for live preview
+            io.emit('room-update', { roomId: peer.roomId });
         }
     });
 }
