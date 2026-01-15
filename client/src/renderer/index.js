@@ -18,21 +18,23 @@ async function startApp() {
         try {
             statusDisplay.innerText = "Bağlanılıyor...";
             
-            // 1. Establish Socket Connection
+            // 1. server Connection
             await socketManager.connect(serverUrl);
             
-            // 2. Join Room & Get server capabilities
+            // 2. Join room and get RTP Capabilities
             const rtpCapabilities = await socketManager.joinRoom(roomId);
             
-            // 3. Initialize Mediasoup Device
-            // This is where sfu.js comes into play
+            // 3. load Mediasoup Device
             await sfuManager.createDevice(rtpCapabilities);
             
-            statusDisplay.innerText = `${roomId} odasına bağlanıldı ve cihaz hazır!`;
-            console.log("[App] Handshake complete. Device is ready.");
+            // 4. Start producing
+            await sfuManager.startProducing();
+
+            statusDisplay.innerText = `${roomId} odasında yayındasın!`;
+            console.log("[App] Handshake and Producing initiated successfully.");
 
         } catch (err) {
-            console.error("Connection failed:", err);
+            console.error("Critical Failure:", err);
             statusDisplay.innerText = `Hata: ${err.message || err}`;
         }
     });
