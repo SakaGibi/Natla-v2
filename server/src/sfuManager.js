@@ -52,7 +52,7 @@ async function getOrCreateRoom(roomId) {
     const router = await worker.createRouter({
         mediaCodecs: config.mediasoup.router.mediaCodecs,
     });
-    
+
     rooms.set(roomId, { router, peers: [] });
     console.log(`Created new room with ID: ${roomId} on worker PID: ${worker.pid}`);
     return router;
@@ -66,8 +66,14 @@ async function createWebRtcTransport(router) {
     const transport = await router.createWebRtcTransport(config.mediasoup.webRtcTransport);
 
     // If you're on a restricted network (like AWS), these events help debug connection issues.
+    // If you're on a restricted network (like AWS), these events help debug connection issues.
     transport.on('dtlsstatechange', (dtlsState) => {
+        console.log(`[SFU] Transport ${transport.id} DTLS state: ${dtlsState}`);
         if (dtlsState === 'closed') transport.close();
+    });
+
+    transport.on('icestatechange', (iceState) => {
+        console.log(`[SFU] Transport ${transport.id} ICE state: ${iceState}`);
     });
 
     return {

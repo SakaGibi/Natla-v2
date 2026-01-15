@@ -17,7 +17,7 @@ class SocketManager {
     connect(url) {
         return new Promise((resolve, reject) => {
             this.socket = io(url, {
-                transports: ['websocket'] 
+                transports: ['websocket']
             });
 
             this.socket.on("connect", () => {
@@ -43,8 +43,8 @@ class SocketManager {
                 if (response.error) {
                     reject(response.error);
                 } else {
-                    console.log(`[Socket] Joined room ${roomId}. RTP Capabilities received.`);
-                    resolve(response.rtpCapabilities);
+                    console.log(`[Socket] Joined room ${roomId}. Data received.`);
+                    resolve(response);
                 }
             });
         });
@@ -67,10 +67,10 @@ class SocketManager {
         });
     }
 
-    
+
     // Send local DTLS parameters to server to link transports
     async connectTransport(transportId, dtlsParameters) {
-        this.socket.emit('connectWebRtcTransport', { transportId, dtlsParameters });
+        this.socket.emit('connectTransport', { transportId, dtlsParameters });
     }
 
     // Inform server that we are producing media
@@ -85,6 +85,43 @@ class SocketManager {
             });
         });
     }
+
+    /**
+     * Request the server to create a Consumer for a specific producer.
+     * @param {string} transportId - The local receive transport ID.
+     * @param {string} producerId - The ID of the producer to consume.
+     * @param {Object} rtpCapabilities - Local device capabilities.
+     */
+    consume(transportId, producerId, rtpCapabilities) {
+        return new Promise((resolve, reject) => {
+            this.socket.emit('consume', { transportId, producerId, rtpCapabilities }, (response) => {
+                if (response.error) {
+                    reject(response.error);
+                } else {
+                    console.log(`[Socket] Consumer params received for producer: ${producerId}.`);
+                    resolve(response);
+                }
+            });
+        });
+    }
+
+    /**
+     * Request the server to resume a paused consumer.
+     * @param {string} consumerId - The ID of the consumer to resume.
+     */
+    async consumerResume(consumerId) {
+        return new Promise((resolve, reject) => {
+            this.socket.emit('consumerResume', { consumerId }, (response) => {
+                if (response && response.error) {
+                    reject(response.error);
+                } else {
+                    console.log(`[Socket] Consumer ${consumerId} resumed on server.`);
+                    resolve();
+                }
+            });
+        });
+    }
+
 }
 
 export const socketManager = new SocketManager();

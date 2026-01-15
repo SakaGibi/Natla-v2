@@ -14,7 +14,7 @@ export class MediaManager {
             // this allows us to get device labels later
             await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
 
-            const devices = await navigator.mediaDevices.enumarateDevices();
+            const devices = await navigator.mediaDevices.enumerateDevices();
             const audioInputs = devices.filter(device => device.kind === 'audioinput');
 
             // clear existing options

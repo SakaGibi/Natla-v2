@@ -15,10 +15,8 @@ function handleConnection(socket, io) {
     // client requests to join a specific room (e.g. 'room1', 'room2', etc.)
     socket.on('joinRoom', async ({ roomId }, callback) => {
         try {
-            // get or create a mediasoup Router for this room
             const router = await sfuManager.getOrCreateRoom(roomId);
 
-            // initialize peer state
             peers.set(socket.id, {
                 roomId,
                 transports: new Map(),
@@ -26,9 +24,21 @@ function handleConnection(socket, io) {
                 consumers: new Map(),
             });
 
-            // SFU requires the client to know the server's RTP capabilities
-            // (what codecs we support) before anything else
-            callback({ rtpCapabilities: router.rtpCapabilities });
+            // Collect existing producers in the room to send to the new joiner
+            const existingProducers = [];
+            peers.forEach((peerData, peerSocketId) => {
+                if (peerData.roomId === roomId && peerSocketId !== socket.id) {
+                    peerData.producers.forEach((_, producerId) => {
+                        existingProducers.push(producerId);
+                    });
+                }
+            });
+
+            // Send both capabilities and the list of existing producers
+            callback({
+                rtpCapabilities: router.rtpCapabilities,
+                existingProducers
+            });
 
             console.log(`[Socket] User ${socket.id} joined room: ${roomId}`);
         } catch (error) {
@@ -57,16 +67,22 @@ function handleConnection(socket, io) {
             callback({ error: error.message });
         }
     });
-    
+
     // step-3 : connect Transport
     // client side creates its own transport and sends DLTS parameters to link with server
-    socket.on('connectTransport', async ({ transportId, dtlsParameters } ) => {
-        const peer = peers.get(socket.id);
-        const transport = peer.transports.get(transportId);
+    socket.on('connectTransport', async ({ transportId, dtlsParameters }) => {
+        try {
+            const peer = peers.get(socket.id);
+            const transport = peer.transports.get(transportId);
 
-        if (transport) {
-            await transport.connect({ dtlsParameters });
-            console.log(`[SFU] Transport ${transportId} connected for ${socket.id}`);
+            if (transport) {
+                await transport.connect({ dtlsParameters });
+                console.log(`[SFU] Transport ${transportId} connected for ${socket.id}`);
+            } else {
+                console.warn(`[SFU] Transport ${transportId} not found in connectTransport.`);
+            }
+        } catch (error) {
+            console.error(`[SFU] connectTransport Error:`, error);
         }
     });
 
@@ -84,8 +100,7 @@ function handleConnection(socket, io) {
             // inform the client of the new producer's id
             callback({ id: producer.id });
 
-            // IMPORTANT: Notify everyone else in the room that a new producer exists
-
+            socket.to(peer.roomId).emit('new-producer', { producerId: producer.id });
             console.log(`[SFU] User ${socket.id} is now PRODUCING ${kind}`);
         } catch (error) {
             console.error('Produce Error:', error);
@@ -108,7 +123,7 @@ function handleConnection(socket, io) {
                 producerId,
                 rtpCapabilities
             );
-            
+
             // store consumer locally
             peer.consumers.set(consumer.id, consumer);
 
@@ -128,13 +143,16 @@ function handleConnection(socket, io) {
 
     // step-6 : resume producer
     // client consumers start paused. client calls this after local setup
-    socket.on('consumerResume', async ({ consumerId }) => {
+    socket.on('consumerResume', async ({ consumerId }, callback) => {
         const peer = peers.get(socket.id);
         const consumer = peer.consumers.get(consumerId);
 
         if (consumer) {
             await consumer.resume();
             console.log(`[SFU] Consumer ${consumerId} resumed for ${socket.id}`);
+            if (callback) callback({});
+        } else {
+            if (callback) callback({ error: 'Consumer not found' });
         }
     });
 
@@ -144,7 +162,7 @@ function handleConnection(socket, io) {
         const peer = peers.get(socket.id);
         if (peer) {
             console.log(`[Socket] User ${socket.id} disconnected. Cleaning up SFU resources.`);
-             
+
             // close all producers, consumers, and transports
             peer.producers.forEach(p => p.close());
             peer.transports.forEach(t => t.close());
@@ -155,6 +173,6 @@ function handleConnection(socket, io) {
     });
 }
 
-module.exports = { 
+module.exports = {
     handleConnection,
 };

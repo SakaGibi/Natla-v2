@@ -13,26 +13,37 @@ async function startApp() {
 
     btnConnect.addEventListener('click', async () => {
         const roomId = document.getElementById('roomSelect').value;
-        const serverUrl = "http://localhost:3030";
+        const serverUrl = import.meta.env.VITE_SERVER_URL || "http://localhost:3030";
 
         try {
-            statusDisplay.innerText = "Bağlanılıyor...";
-            
-            // 1. server Connection
+            statusDisplay.innerText = "Connecting...";
             await socketManager.connect(serverUrl);
-            
-            // 2. Join room and get RTP Capabilities
-            const rtpCapabilities = await socketManager.joinRoom(roomId);
-            
-            // 3. load Mediasoup Device
+
+            // 1. Join room and get data
+            const { rtpCapabilities, existingProducers } = await socketManager.joinRoom(roomId);
+
+            // 2. Load Mediasoup Device
             await sfuManager.createDevice(rtpCapabilities);
-            
-            // 4. Start producing
+
+            // 3. Create the inbound highway (Recv Transport)
+            await sfuManager.createRecvTransport();
+
+            // 4. Start producing your own audio
             await sfuManager.startProducing();
 
-            statusDisplay.innerText = `${roomId} odasında yayındasın!`;
-            console.log("[App] Handshake and Producing initiated successfully.");
+            // 5. Consume EXISTING people
+            (existingProducers || []).forEach(producerId => {
+                console.log('[App] Consuming existing producer:', producerId);
+                sfuManager.consume(producerId);
+            });
 
+            // 6. Listen for FUTURE people
+            socketManager.socket.on('new-producer', async ({ producerId }) => {
+                console.log('[App] New producer joined:', producerId);
+                await sfuManager.consume(producerId);
+            });
+
+            statusDisplay.innerText = `${roomId} odasında yayındasın!`;
         } catch (err) {
             console.error("Critical Failure:", err);
             statusDisplay.innerText = `Hata: ${err.message || err}`;

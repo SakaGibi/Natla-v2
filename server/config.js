@@ -1,4 +1,5 @@
 const os = require('os');
+require('dotenv').config();
 
 /** 
  * Global Configuration for Natla SFU Server
@@ -24,8 +25,8 @@ module.exports = {
             logTags: [
                 'info', 'ice', 'dtls', 'rtp', 'srtp', 'rtcp',
             ],
-            rtcMinPort: 10000,
-            rtcMaxPort: 10100,
+            rtcMinPort: Number(process.env.RTC_MIN_PORT),
+            rtcMaxPort: Number(process.env.RTC_MAX_PORT),
         },
 
         // router (Room) settings
@@ -49,7 +50,7 @@ module.exports = {
                  */
                 {
                     ip: '0.0.0.0',
-                    announcedIp: process.env.ANNOUNCED_IP || '127.0.0.1', 
+                    announcedIp: process.env.ANNOUNCED_IP || '127.0.0.1',
                 },
 
                 /**
