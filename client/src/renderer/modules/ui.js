@@ -9,15 +9,17 @@ class UIManager {
      * @param {string} displayName - Name to display
      * @param {boolean} isSelf - Is this the local user?
      */
-    addPeer(peerId, displayName, isSelf = false) {
+    addPeer(peerId, displayName, isSelf = false, profilePic = null) {
         if (document.getElementById(`user-card-${peerId}`)) return;
+
+        const avatarSrc = profilePic || "assets/default-avatar.png";
 
         const card = document.createElement('div');
         card.className = 'user-card';
         card.id = `user-card-${peerId}`;
         card.innerHTML = `
             <div class="avatar-wrapper">
-                <img src="assets/default-avatar.png" class="user-avatar-list" alt="Avatar">
+                <img src="${avatarSrc}" class="user-avatar-list" alt="Avatar">
             </div>
             <div class="user-details">
                 <div class="user-header">

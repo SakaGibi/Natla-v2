@@ -18,8 +18,9 @@ const btnDisconnect = document.getElementById('btnDisconnect');
 // State for notifications
 let defaultStatusText = "";
 let notificationTimeout = null;
-const peerNames = new Map(); // producerId -> displayName
+const peerNames = new Map();
 let myName = "";
+let myProfilePic = null;
 let currentRoom = "";
 const serverUrl = import.meta.env.VITE_SERVER_URL || "http://localhost:3030";
 
@@ -77,8 +78,54 @@ function showNotification(text, color = '#2ecc71', duration = 2000) {
     }, duration);
 }
 
+// Load persisted data
+function loadSavedData() {
+    const savedName = localStorage.getItem('natla_username');
+    const savedPic = localStorage.getItem('natla_profilePic');
+
+    if (savedName) {
+        document.getElementById('username').value = savedName;
+    }
+
+    if (savedPic) {
+        myProfilePic = savedPic;
+        document.getElementById('myAvatarDisplay').src = savedPic;
+    }
+}
+
 async function startApp() {
     console.log("Natla Client Initializing...");
+
+    // Load persisted data
+    loadSavedData();
+
+    // Setup Avatar Selection
+    const avatarInput = document.getElementById('avatarInput');
+    const myAvatarDisplay = document.getElementById('myAvatarDisplay');
+
+    myAvatarDisplay.addEventListener('click', () => {
+        avatarInput.click();
+    });
+
+    avatarInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (file.size > 2 * 1024 * 1024) { // 2MB limit
+            showNotification("Resim boyutu 2MB'dan küçük olmalı!", "#e74c3c", 3000);
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const base64String = event.target.result;
+            myProfilePic = base64String;
+            myAvatarDisplay.src = base64String;
+            localStorage.setItem('natla_profilePic', base64String);
+            showNotification("Profil fotoğrafı güncellendi!", "#2ecc71", 2000);
+        };
+        reader.readAsDataURL(file);
+    });
 
     // Initial Connection & Preview Logic
     try {
@@ -219,10 +266,13 @@ async function startApp() {
             // Already connected, just join room now
 
             // 1. Join room and get data
-            const { rtpCapabilities, existingProducers } = await socketManager.joinRoom(roomId, displayName);
+            const { rtpCapabilities, existingProducers } = await socketManager.joinRoom(roomId, displayName, myProfilePic);
+
+            // Save username for next time
+            localStorage.setItem('natla_username', displayName);
 
             // Render Self
-            uiManager.addPeer('me', displayName, true);
+            uiManager.addPeer('me', displayName, true, myProfilePic);
 
             // 2. Load Mediasoup Device
             await sfuManager.createDevice(rtpCapabilities);
@@ -248,7 +298,7 @@ async function startApp() {
 
             // 5. Consume EXISTING people who are already in the room
             (existingProducers || []).forEach(p => {
-                const { producerId, socketId, displayName, isMuted, isDeafened } = p;
+                const { producerId, socketId, displayName, isMuted, isDeafened, profilePic } = p;
                 const peerName = displayName || `User-${socketId.substr(0, 4)}`;
 
                 // If we already have this name under a DIFFERENT socket ID, it's likely a stale ghost.
@@ -268,7 +318,7 @@ async function startApp() {
                 sfuManager.consume(producerId, socketId);
 
                 // Create UI card indexed by socketId to match peer-update events
-                uiManager.addPeer(socketId, peerName);
+                uiManager.addPeer(socketId, peerName, false, profilePic);
 
                 // Apply the initial mute/deafen state received from the server
                 uiManager.updatePeerState(socketId, { isMuted, isDeafened });
@@ -277,7 +327,7 @@ async function startApp() {
             updateRoomStatus();
 
             // 6. Listen for FUTURE people who join the room later
-            socketManager.socket.on('new-producer', async ({ producerId, socketId, displayName }) => {
+            socketManager.socket.on('new-producer', async ({ producerId, socketId, displayName, profilePic }) => {
                 console.log('[App] New producer joined:', producerId, 'socket:', socketId);
                 const name = displayName || `User-${socketId.substr(0, 4)}`;
 
@@ -294,13 +344,13 @@ async function startApp() {
                 // Update local state and notifications
                 peerNames.set(socketId, name);
                 updateRoomStatus();
-                showNotification(`${name} joined`, "#2ecc71", 2000);
+                showNotification(`${name} Odaya Katıldı`, "#2ecc71", 2000);
 
                 // Establish media connection
                 await sfuManager.consume(producerId, socketId);
 
                 // Add the user card using socketId for state synchronization
-                uiManager.addPeer(socketId, name);
+                uiManager.addPeer(socketId, name, false, profilePic);
             });
 
             socketManager.socket.on('producer-closed', ({ producerId, socketId, displayName }) => {
@@ -314,7 +364,7 @@ async function startApp() {
                 peerNames.delete(idToRemove);
 
                 updateRoomStatus();
-                showNotification(`${name} çıktı`, "#e74c3c", 2000);
+                showNotification(`${name} Odadan Ayrıldı`, "#e74c3c", 2000);
 
                 uiManager.removePeer(idToRemove);
                 audioAnalyzer.stop(idToRemove);

@@ -27,7 +27,7 @@ function handleConnection(socket, io) {
     });
 
     // step-1 : Join a room
-    socket.on('joinRoom', async ({ roomId, displayName }, callback) => {
+    socket.on('joinRoom', async ({ roomId, displayName, profilePic }, callback) => {
         try {
             const router = await sfuManager.getOrCreateRoom(roomId);
 
@@ -39,6 +39,7 @@ function handleConnection(socket, io) {
             peers.set(socket.id, {
                 roomId,
                 displayName: displayName || `User-${socket.id.substr(0, 4)}`,
+                profilePic: profilePic || null,
                 transports: new Map(),
                 producers: new Map(),
                 consumers: new Map(),
@@ -57,6 +58,7 @@ function handleConnection(socket, io) {
                             producerId,
                             socketId: peerSocketId,
                             displayName: peerData.displayName,
+                            profilePic: peerData.profilePic,
                             isMuted: peerData.isMuted,
                             isDeafened: peerData.isDeafened
                         });
@@ -122,7 +124,8 @@ function handleConnection(socket, io) {
             socket.to(peer.roomId).emit('new-producer', {
                 producerId: producer.id,
                 socketId: socket.id,
-                displayName: peer.displayName
+                displayName: peer.displayName,
+                profilePic: peer.profilePic
             });
         } catch (error) {
             console.error('Produce Error:', error);

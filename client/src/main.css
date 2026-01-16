@@ -497,6 +497,8 @@ body.light-theme #btnSettings {
     height: 75px;
     object-fit: cover;
     flex-shrink: 0;
+    display: block;
+    /* Removes bottom gap */
     /* Border right moved to wrapper or removed as wrapper handles it */
 }
 
