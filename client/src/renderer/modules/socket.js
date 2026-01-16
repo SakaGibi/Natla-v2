@@ -114,13 +114,22 @@ class SocketManager {
             this.socket.emit('consumerResume', { consumerId }, (response) => {
                 if (response && response.error) {
                     reject(response.error);
-                } else {
-                    console.log(`[Socket] Consumer ${consumerId} resumed on server.`);
-                    resolve();
                 }
             });
         });
     }
+
+    /**
+     * Emit a sound event to the server to play for others in the room.
+     * @param {string} soundPath - Filename or path of the sound
+     * @param {boolean} isCustom - Whether it's a custom uploaded sound
+     */
+    emitPlaySound(soundPath, isCustom) {
+        if (this.socket) {
+            this.socket.emit('play-sound', { soundPath, isCustom });
+        }
+    }
+
 
 }
 

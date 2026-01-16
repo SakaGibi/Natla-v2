@@ -6,6 +6,9 @@ import { socketManager } from './modules/socket.js';
 import { sfuManager } from './modules/sfu.js';
 import { uiManager } from './modules/ui.js';
 import { audioAnalyzer } from './modules/audioAnalyzer.js';
+import { soundEffects } from './modules/soundEffects.js';
+
+soundEffects.init();
 
 const btnConnect = document.getElementById('btnConnect');
 const statusDisplay = document.getElementById('roomPreview');
@@ -192,6 +195,16 @@ async function startApp() {
             console.log(`[App] Peer update received for ${peerId}: Muted=${isMuted}, Deafened=${isDeafened}`);
             uiManager.updatePeerState(peerId, { isMuted, isDeafened });
         });
+
+        // Handle Remote Soundpad Events
+        socketManager.socket.on('play-sound', ({ soundPath, isCustom }) => {
+            // Respect deafen state
+            if (!sfuManager.isDeafenedGlobal) {
+                console.log(`[App] Playing remote sound: ${soundPath}`);
+                soundEffects.playLocalSound(soundPath, isCustom);
+            }
+        });
+
 
     } catch (err) {
         console.error("[App] Connection Error:", err);

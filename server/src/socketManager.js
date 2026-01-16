@@ -184,6 +184,21 @@ function handleConnection(socket, io) {
         }
     });
 
+
+    // step-8 : Play Sound (Soundpad)
+    socket.on('play-sound', ({ soundPath, isCustom }) => {
+        const peer = peers.get(socket.id);
+        if (peer && peer.roomId) {
+            // Broadcast to everyone else in the room
+            socket.to(peer.roomId).emit('play-sound', {
+                soundPath,
+                isCustom,
+                senderIds: socket.id // Optional: if we want to show who played it
+            });
+        }
+    });
+
+
     // Handle disconnection and cleanup resources
     socket.on('disconnect', () => {
         const peer = peers.get(socket.id);

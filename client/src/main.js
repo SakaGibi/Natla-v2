@@ -10,7 +10,9 @@ function createWindow() {
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
+            webSecurity: false
         },
+
         title: "Natla V2"
     });
 

@@ -17,6 +17,11 @@ class SFUManager {
         this.isDeafenedGlobal = false;
     }
 
+    get isConnected() {
+        return !!(this.device && this.device.loaded);
+    }
+
+
     /**
      * Initializes the Mediasoup Device with server capabilities.
      * @param {Object} rtpCapabilities - The capabilities sent by the server.
