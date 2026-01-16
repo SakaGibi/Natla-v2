@@ -23,23 +23,25 @@ class UIManager {
                 <div class="user-header">
                     <span style="font-weight: bold; font-size: 14px;">${displayName} ${isSelf ? '(Ben)' : ''}</span>
                     <div class="status-indicators">
-                        <span style="font-size: 14px; margin-right: 5px;">${isSelf ? '🎤' : '🔊'}</span>
+                        <span style="font-size: 14px; margin-right: 5px;">🎤 🔊</span>
                         <span class="user-status">Canlı</span>
                     </div>
                 </div>
 
-                <!-- Volume Slider (Only for Remote Users) -->
-                ${!isSelf ? `
-                <div class="user-volume-row">
-                    <input type="range" class="peer-volume-slider" min="0" max="100" value="100" oninput="this.style.setProperty('--val', this.value + '%')">
-                    <span class="vol-label">100%</span>
-                </div>
-                ` : ''}
+                <div class="user-controls-centered" style="margin-top: auto;">
+                    <!-- Volume Slider (Only for Remote Users) -->
+                    ${!isSelf ? `
+                    <div class="user-volume-row" style="margin-bottom: 4px;">
+                        <input type="range" class="peer-volume-slider" min="0" max="100" value="100" oninput="this.style.setProperty('--val', this.value + '%')">
+                        <span class="vol-label">100%</span>
+                    </div>
+                    ` : ''}
 
-                <!-- Audio Visualizer (Common for all) -->
-                 <div class="user-volume-row" style="margin-top: auto;">
-                    <div class="meter-bg">
-                        <div class="meter-fill" id="volume-meter-${peerId}" style="width: 0%;"></div>
+                    <!-- Audio Visualizer (Common for all) -->
+                    <div class="user-volume-row">
+                        <div class="meter-bg">
+                            <div class="meter-fill" id="volume-meter-${peerId}" style="width: 0%;"></div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -77,6 +79,33 @@ class UIManager {
         const meter = document.getElementById(`volume-meter-${peerId}`);
         if (meter) {
             meter.style.width = `${level}%`;
+        }
+    }
+
+    /**
+     * Updates the mute/deafen icons for a peer.
+     * @param {string} peerId 
+     * @param {Object} state { isMuted, isDeafened }
+     */
+    updatePeerState(peerId, { isMuted, isDeafened }) {
+        const card = document.getElementById(`user-card-${peerId}`);
+        if (!card) return;
+
+        const indicators = card.querySelector('.status-indicators');
+        const iconsSpan = indicators.querySelector('span:first-child');
+        const statusText = card.querySelector('.user-status');
+
+        if (isDeafened) {
+            iconsSpan.textContent = '🔇';
+            card.style.opacity = '0.6';
+        } else if (isMuted) {
+            iconsSpan.textContent = '❌ 🔊';
+            card.style.opacity = '0.8';
+        } else {
+            iconsSpan.textContent = '🎤 🔊';
+            statusText.textContent = 'Canlı';
+            statusText.style.color = '#2ecc71';
+            card.style.opacity = '1';
         }
     }
 }

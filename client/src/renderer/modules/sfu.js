@@ -14,6 +14,7 @@ class SFUManager {
         this.sendTransport = null;
         this.recvTransport = null;
         this.localStream = null;
+        this.isDeafenedGlobal = false;
     }
 
     /**
@@ -169,6 +170,9 @@ class SFUManager {
             remoteAudio.controls = false;
             remoteAudio.style.display = 'none'; // Completely hide it, we have our own UI
 
+            // Respect global deafen state
+            remoteAudio.muted = this.isDeafenedGlobal;
+
             // 6. PLAY: Handle browser autoplay restrictions
             // Wait for metadata to ensure we are ready to play
             remoteAudio.onloadedmetadata = async () => {
@@ -195,10 +199,56 @@ class SFUManager {
                     remoteAudio.parentNode.insertBefore(btn, remoteAudio.nextSibling);
                 }
             };
-
         } catch (error) {
             console.error('[SFU] Consume failed:', error);
         }
+    }
+
+    /**
+     * Toggles the local microphone audio track.
+     * @returns {boolean} isMuted - The new state.
+     */
+    toggleMic() {
+        if (this.producer && this.producer.track) {
+            this.producer.track.enabled = !this.producer.track.enabled;
+            const isMuted = !this.producer.track.enabled;
+            console.log(`[SFU] Microphone is now ${isMuted ? 'Muted' : 'Active'}`);
+            return isMuted;
+        }
+        console.warn('[SFU] toggleMic called but no producer found.');
+        return false;
+    }
+
+    /**
+     * Explicitly sets the microphone mute state.
+     * @param {boolean} shouldMute 
+     */
+    setMicMute(shouldMute) {
+        if (this.producer && this.producer.track) {
+            this.producer.track.enabled = !shouldMute;
+            console.log(`[SFU] Microphone set to ${shouldMute ? 'Muted' : 'Active'}`);
+            return shouldMute;
+        }
+        return false;
+    }
+
+    /**
+     * Toggles all remote audio (Deafen).
+     * @returns {boolean} isDeafened - The new state.
+     */
+    toggleDeafen() {
+        // Toggle global state first
+        this.isDeafenedGlobal = !this.isDeafenedGlobal;
+
+        const audioElements = document.querySelectorAll('audio[id^="remote-audio-"]');
+
+        // Apply to all existing elements
+        audioElements.forEach(el => {
+            el.muted = this.isDeafenedGlobal;
+        });
+
+        console.log(`[SFU] Deafen is now ${this.isDeafenedGlobal ? 'Active (Muted)' : 'Disabled (Sound On)'}`);
+        return this.isDeafenedGlobal;
     }
 }
 export const sfuManager = new SFUManager();

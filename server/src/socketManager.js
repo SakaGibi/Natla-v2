@@ -41,6 +41,8 @@ function handleConnection(socket, io) {
                 transports: new Map(),
                 producers: new Map(),
                 consumers: new Map(),
+                isMuted: false,
+                isDeafened: false
             });
 
             socket.join(roomId); // Crucial for room signaling
@@ -52,7 +54,10 @@ function handleConnection(socket, io) {
                     peerData.producers.forEach((_, producerId) => {
                         existingProducers.push({
                             producerId,
-                            displayName: peerData.displayName
+                            socketId: peerSocketId,
+                            displayName: peerData.displayName,
+                            isMuted: peerData.isMuted,
+                            isDeafened: peerData.isDeafened
                         });
                     });
                 }
@@ -130,6 +135,7 @@ function handleConnection(socket, io) {
 
             socket.to(peer.roomId).emit('new-producer', {
                 producerId: producer.id,
+                socketId: socket.id,
                 displayName: peer.displayName
             });
             console.log(`[SFU] User ${socket.id} is now PRODUCING ${kind}`);
@@ -184,6 +190,23 @@ function handleConnection(socket, io) {
             if (callback) callback({});
         } else {
             if (callback) callback({ error: 'Consumer not found' });
+        }
+    });
+
+    // step-7 : Peer State Update (Mute/Deafen)
+    socket.on('peer-update', ({ isMuted, isDeafened }) => {
+        const peer = peers.get(socket.id);
+        if (peer) {
+            peer.isMuted = isMuted;
+            peer.isDeafened = isDeafened;
+
+            // Broadcast to room
+            socket.to(peer.roomId).emit('peer-update', {
+                peerId: socket.id,
+                isMuted,
+                isDeafened
+            });
+            console.log(`[Socket] Peer ${peer.displayName} updated state: Muted=${isMuted}, Deafened=${isDeafened}`);
         }
     });
 

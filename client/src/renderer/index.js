@@ -28,7 +28,7 @@ function updateRoomStatusOnly(roomName, userList) {
     const count = userList.length;
     const namesStr = userList.join(', ');
 
-    // "Genel: 3 Kişi (Ahmet, Mehmet...)"
+    // Room Status Text
     if (count === 0) {
         defaultStatusText = `${roomName}: Boş`;
     } else {
@@ -50,7 +50,7 @@ function updateRoomStatus() {
     const names = [myName, ...peerNames.values()];
     const namesStr = names.join(', ');
 
-    // "Genel: 3 Kişi (Ahmet, Mehmet...)"
+    // Room Status Text
     defaultStatusText = `${currentRoom}: ${count} Kişi (${namesStr})`;
 
     if (!notificationTimeout) {
@@ -140,9 +140,70 @@ async function startApp() {
             }
         });
 
+        // Handle Peer State Updates (Mute/Deafen)
+        socketManager.socket.on('peer-update', ({ peerId, isMuted, isDeafened }) => {
+            console.log(`[App] Peer update received for ${peerId}: Muted=${isMuted}, Deafened=${isDeafened}`);
+            uiManager.updatePeerState(peerId, { isMuted, isDeafened });
+        });
+
     } catch (err) {
         console.error("[App] Connection Error:", err);
     }
+
+    // --- BUTTON EVENT LISTENERS ---
+
+    // Toggle Mic
+    btnToggleMic.addEventListener('click', () => {
+        const isMuted = sfuManager.toggleMic();
+
+        // Update local UI state
+        const isDeafened = btnToggleSound.classList.contains('btn-closed');
+
+        // Send to server about our new state
+        socketManager.socket.emit('peer-update', { isMuted, isDeafened });
+
+        // Update button style
+        if (isMuted) {
+            btnToggleMic.classList.add('btn-closed');
+            btnToggleMic.innerHTML = '🎤✖';
+        } else {
+            btnToggleMic.classList.remove('btn-closed');
+            btnToggleMic.innerHTML = '🎤';
+        }
+
+        // Update local card immediately
+        uiManager.updatePeerState('me', { isMuted, isDeafened });
+    });
+
+    // Toggle Sound (Deafen)
+    btnToggleSound.addEventListener('click', () => {
+        const isDeafened = sfuManager.toggleDeafen();
+
+        let isMuted = btnToggleMic.classList.contains('btn-closed');
+
+        if (isDeafened) {
+            // Force Mute Mic when Deafening
+            sfuManager.setMicMute(true);
+            isMuted = true;
+
+            // Update Mic Button UI to reflect mute
+            btnToggleMic.classList.add('btn-closed');
+            btnToggleMic.innerHTML = '🎤✖';
+        }
+
+        socketManager.socket.emit('peer-update', { isMuted, isDeafened });
+
+        if (isDeafened) {
+            btnToggleSound.classList.add('btn-closed');
+            btnToggleSound.innerHTML = '🔇';
+        } else {
+            btnToggleSound.classList.remove('btn-closed');
+            btnToggleSound.innerHTML = '🔊';
+        }
+
+        uiManager.updatePeerState('me', { isMuted, isDeafened });
+    });
+
 
     btnConnect.addEventListener('click', async () => {
         const roomId = document.getElementById('roomSelect').value;
@@ -183,35 +244,43 @@ async function startApp() {
                 peerNames.set(producerId, peerName);
             });
 
-            // "Welcome" - Green
-            showNotification("Odaya Bağlanılıyor!", "#2ecc71", 1000);
             updateRoomStatus();
 
-            // 5. Consume EXISTING people
+            // 5. Consume EXISTING people who are already in the room
             (existingProducers || []).forEach(p => {
-                // Determine if p is just an ID or an object {producerId, displayName}
-                // Server update sends object now
-                const producerId = p.producerId || p;
-                const peerName = p.displayName || `User-${producerId.substr(0, 4)}`;
+                const { producerId, socketId, displayName, isMuted, isDeafened } = p;
+                const peerName = displayName || `User-${socketId.substr(0, 4)}`;
 
-                // NO double add to map here, already done above for status
+                peerNames.set(socketId, peerName);
 
                 console.log('[App] Consuming existing producer:', producerId);
+    
                 sfuManager.consume(producerId);
-                uiManager.addPeer(producerId, peerName);
+    
+                // Create UI card indexed by socketId to match peer-update events
+                uiManager.addPeer(socketId, peerName);
+
+                // Apply the initial mute/deafen state received from the server
+                uiManager.updatePeerState(socketId, { isMuted, isDeafened });
             });
 
-            // 6. Listen for FUTURE people
-            socketManager.socket.on('new-producer', async ({ producerId, displayName }) => {
+            updateRoomStatus();
+
+            // 6. Listen for FUTURE people who join the room later
+            socketManager.socket.on('new-producer', async ({ producerId, socketId, displayName }) => {
                 console.log('[App] New producer joined:', producerId);
-                const name = displayName || `User-${producerId.substr(0, 4)}`;
+                const name = displayName || `User-${socketId.substr(0, 4)}`;
 
-                peerNames.set(producerId, name);
+                // Update local state and notifications
+                peerNames.set(socketId, name);
                 updateRoomStatus();
-                showNotification(`${name} girdi`, "#2ecc71", 2000); // Green
+                showNotification(`${name} joined`, "#2ecc71", 2000);
 
+                // Establish media connection
                 await sfuManager.consume(producerId);
-                uiManager.addPeer(producerId, name);
+    
+                // Add the user card using socketId for state synchronization
+                uiManager.addPeer(socketId, name);
             });
 
             socketManager.socket.on('producer-closed', ({ producerId, displayName }) => {
@@ -221,7 +290,7 @@ async function startApp() {
 
                 peerNames.delete(producerId);
                 updateRoomStatus();
-                showNotification(`${name} çıktı`, "#e74c3c", 2000); // Red
+                showNotification(`${name} çıktı`, "#e74c3c", 2000);
 
                 uiManager.removePeer(producerId);
                 audioAnalyzer.stop(producerId);
@@ -238,19 +307,7 @@ async function startApp() {
         }
     });
 
-    // Toggle Mic
-    btnToggleMic.addEventListener('click', () => {
-        const isClosed = btnToggleMic.classList.toggle('btn-closed');
-        btnToggleMic.innerText = isClosed ? '🎤✖' : '🎤';
-        // TODO: Actually mute the producer track
-    });
 
-    // Toggle Sound (Deafen)
-    btnToggleSound.addEventListener('click', () => {
-        const isClosed = btnToggleSound.classList.toggle('btn-closed');
-        btnToggleSound.innerText = isClosed ? '🔇' : '🔊';
-        // TODO: Actually mute all remote audio tags
-    });
 
     // Disconnect
     btnDisconnect.addEventListener('click', () => {
