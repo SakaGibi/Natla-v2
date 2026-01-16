@@ -251,12 +251,22 @@ async function startApp() {
                 const { producerId, socketId, displayName, isMuted, isDeafened } = p;
                 const peerName = displayName || `User-${socketId.substr(0, 4)}`;
 
+                // If we already have this name under a DIFFERENT socket ID, it's likely a stale ghost.
+                for (const [existingSocketId, existingName] of peerNames.entries()) {
+                    if (existingName === peerName && existingSocketId !== socketId) {
+                        console.warn(`[App] Detected Ghost User by name collision (${peerName}). Removing OLD socket: ${existingSocketId}`);
+                        peerNames.delete(existingSocketId);
+                        uiManager.removePeer(existingSocketId);
+                        audioAnalyzer.stop(existingSocketId);
+                    }
+                }
+
                 peerNames.set(socketId, peerName);
 
-                console.log('[App] Consuming existing producer:', producerId);
-    
-                sfuManager.consume(producerId);
-    
+                console.log('[App] Consuming existing producer:', producerId, 'from socket:', socketId);
+
+                sfuManager.consume(producerId, socketId);
+
                 // Create UI card indexed by socketId to match peer-update events
                 uiManager.addPeer(socketId, peerName);
 
@@ -268,8 +278,18 @@ async function startApp() {
 
             // 6. Listen for FUTURE people who join the room later
             socketManager.socket.on('new-producer', async ({ producerId, socketId, displayName }) => {
-                console.log('[App] New producer joined:', producerId);
+                console.log('[App] New producer joined:', producerId, 'socket:', socketId);
                 const name = displayName || `User-${socketId.substr(0, 4)}`;
+
+                // GHOST USER FIX: Name Collision Check
+                for (const [existingSocketId, existingName] of peerNames.entries()) {
+                    if (existingName === name && existingSocketId !== socketId) {
+                        console.warn(`[App] Detected Ghost User by name collision (${name}). Removing OLD socket: ${existingSocketId}`);
+                        peerNames.delete(existingSocketId);
+                        uiManager.removePeer(existingSocketId);
+                        audioAnalyzer.stop(existingSocketId);
+                    }
+                }
 
                 // Update local state and notifications
                 peerNames.set(socketId, name);
@@ -277,23 +297,31 @@ async function startApp() {
                 showNotification(`${name} joined`, "#2ecc71", 2000);
 
                 // Establish media connection
-                await sfuManager.consume(producerId);
-    
+                await sfuManager.consume(producerId, socketId);
+
                 // Add the user card using socketId for state synchronization
                 uiManager.addPeer(socketId, name);
             });
 
-            socketManager.socket.on('producer-closed', ({ producerId, displayName }) => {
+            socketManager.socket.on('producer-closed', ({ producerId, socketId, displayName }) => {
                 console.log('[App] Producer closed:', producerId);
 
-                const name = displayName || peerNames.get(producerId) || "Birisi";
+                const idToRemove = socketId || producerId;
 
-                peerNames.delete(producerId);
+                const name = displayName || peerNames.get(idToRemove) || "Birisi";
+
+                // Clean up map
+                peerNames.delete(idToRemove);
+
                 updateRoomStatus();
                 showNotification(`${name} çıktı`, "#e74c3c", 2000);
 
-                uiManager.removePeer(producerId);
-                audioAnalyzer.stop(producerId);
+                uiManager.removePeer(idToRemove);
+                audioAnalyzer.stop(idToRemove);
+
+                // Cleanup Audio Element
+                const audioEl = document.getElementById(`remote-audio-${producerId}`);
+                if (audioEl) audioEl.remove();
             });
 
             // UI: Switch to active controls

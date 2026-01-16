@@ -5,15 +5,13 @@ const sfuManager = require('./sfuManager');
  * Manages signaling events between clients and the SFU.
  */
 
-// Local state to track which peer is in which room and their transports/producers
-// Structure: { socketId: { roomId, transports: [], producers: [], consumers: [] } }
+// Local state to track peers: { socketId: { roomId, displayName, transports, producers, consumers, ... } }
 const peers = new Map();
 
 function handleConnection(socket, io) {
 
-    // step-0 : get room stats (preview mode)
+    // step-0 : Get room stats for preview mode
     socket.on('getRoomStats', ({ roomId }, callback) => {
-        console.log(`[Socket] getRoomStats requested for room: ${roomId}`);
         try {
             const users = [];
             peers.forEach((peerData) => {
@@ -21,7 +19,6 @@ function handleConnection(socket, io) {
                     users.push(peerData.displayName);
                 }
             });
-            console.log(`[Socket] Sending stats for ${roomId}:`, users);
             callback({ users });
         } catch (error) {
             console.error(`[Socket] getRoomStats error:`, error);
@@ -29,11 +26,15 @@ function handleConnection(socket, io) {
         }
     });
 
-    // step-1 : join a room
-    // client requests to join a specific room (e.g. 'room1', 'room2', etc.)
+    // step-1 : Join a room
     socket.on('joinRoom', async ({ roomId, displayName }, callback) => {
         try {
             const router = await sfuManager.getOrCreateRoom(roomId);
+
+            // Cleanup potential stale session for the same socket
+            if (peers.has(socket.id)) {
+                socket.leave(peers.get(socket.id).roomId);
+            }
 
             peers.set(socket.id, {
                 roomId,
@@ -45,9 +46,9 @@ function handleConnection(socket, io) {
                 isDeafened: false
             });
 
-            socket.join(roomId); // Crucial for room signaling
+            socket.join(roomId);
 
-            // Collect existing producers in the room to send to the new joiner
+            // Collect existing producers to inform the new joiner
             const existingProducers = [];
             peers.forEach((peerData, peerSocketId) => {
                 if (peerData.roomId === roomId && peerSocketId !== socket.id) {
@@ -63,15 +64,12 @@ function handleConnection(socket, io) {
                 }
             });
 
-            // Send both capabilities and the list of existing producers
             callback({
                 rtpCapabilities: router.rtpCapabilities,
                 existingProducers
             });
 
             console.log(`[Socket] User ${socket.id} joined room: ${roomId}`);
-
-            // Broadcast room update to all clients for live preview
             io.emit('room-update', { roomId });
 
         } catch (error) {
@@ -80,20 +78,14 @@ function handleConnection(socket, io) {
         }
     });
 
-    // step-2 : create WebRTC transport
-    // the client needs a transport to either SEND (produce) or RECEIVE (consume) media
+    // step-2 : Create WebRTC transport
     socket.on('createWebRtcTransport', async ({ sender }, callback) => {
         try {
             const peer = peers.get(socket.id);
             const router = (await sfuManager.rooms.get(peer.roomId)).router;
-
-            // Create the transport on the server side
             const { params, transport } = await sfuManager.createWebRtcTransport(router);
 
-            // Store transport locally to manage it later (connect/close)
             peer.transports.set(transport.id, transport);
-
-            // Send transport parameters back to the client
             callback(params);
         } catch (error) {
             console.error('Create Transport Error:', error);
@@ -101,8 +93,7 @@ function handleConnection(socket, io) {
         }
     });
 
-    // step-3 : connect Transpot
-    // client side creates its own transport and sends DLTS parameters to link with server
+    // step-3 : Connect Transport
     socket.on('connectTransport', async ({ transportId, dtlsParameters }) => {
         try {
             const peer = peers.get(socket.id);
@@ -110,50 +101,42 @@ function handleConnection(socket, io) {
 
             if (transport) {
                 await transport.connect({ dtlsParameters });
-                console.log(`[SFU] Transport ${transportId} connected for ${socket.id}`);
-            } else {
-                console.warn(`[SFU] Transport ${transportId} not found in connectTransport.`);
             }
         } catch (error) {
             console.error(`[SFU] connectTransport Error:`, error);
         }
     });
 
-    // step-4 : produce media
-    // client requests to start sending media
+    // step-4 : Produce media
     socket.on('produce', async ({ transportId, kind, rtpParameters }, callback) => {
         try {
             const peer = peers.get(socket.id);
             const transport = peer.transports.get(transportId);
 
-            // create a producer on the server
             const producer = await transport.produce({ kind, rtpParameters });
             peer.producers.set(producer.id, producer);
 
-            // inform the client of the new producer's id
             callback({ id: producer.id });
 
+            // Notify others about the new producer and provide the Socket ID
             socket.to(peer.roomId).emit('new-producer', {
                 producerId: producer.id,
                 socketId: socket.id,
                 displayName: peer.displayName
             });
-            console.log(`[SFU] User ${socket.id} is now PRODUCING ${kind}`);
         } catch (error) {
             console.error('Produce Error:', error);
             callback({ error: error.message });
         }
     });
 
-    // step-5 : consume media
-    // client requests to recive a specific media track (audio/video)
+    // step-5 : Consume media
     socket.on('consume', async ({ transportId, producerId, rtpCapabilities }, callback) => {
         try {
             const peer = peers.get(socket.id);
             const { router } = sfuManager.rooms.get(peer.roomId);
             const transport = peer.transports.get(transportId);
 
-            // create consumer on the server
             const { params, consumer } = await sfuManager.createConsumer(
                 router,
                 transport,
@@ -161,16 +144,12 @@ function handleConnection(socket, io) {
                 rtpCapabilities
             );
 
-            // store consumer locally
             peer.consumers.set(consumer.id, consumer);
-
-            // handle consumer close event
             consumer.on('transportclose', () => {
                 consumer.close();
                 peer.consumers.delete(consumer.id);
             });
 
-            // send parameters to client to create their local consumer
             callback(params);
         } catch (error) {
             console.error('Consume Error:', error);
@@ -178,18 +157,13 @@ function handleConnection(socket, io) {
         }
     });
 
-    // step-6 : resume producer
-    // client consumers start paused. client calls this after local setup
+    // step-6 : Resume consumer
     socket.on('consumerResume', async ({ consumerId }, callback) => {
         const peer = peers.get(socket.id);
         const consumer = peer.consumers.get(consumerId);
-
         if (consumer) {
             await consumer.resume();
-            console.log(`[SFU] Consumer ${consumerId} resumed for ${socket.id}`);
             if (callback) callback({});
-        } else {
-            if (callback) callback({ error: 'Consumer not found' });
         }
     });
 
@@ -199,40 +173,33 @@ function handleConnection(socket, io) {
         if (peer) {
             peer.isMuted = isMuted;
             peer.isDeafened = isDeafened;
-
-            // Broadcast to room
             socket.to(peer.roomId).emit('peer-update', {
                 peerId: socket.id,
                 isMuted,
                 isDeafened
             });
-            console.log(`[Socket] Peer ${peer.displayName} updated state: Muted=${isMuted}, Deafened=${isDeafened}`);
         }
     });
 
-    // handle disconnection
-    // clean up all mediasoup objects when a user leaves
+    // Handle disconnection and cleanup resources
     socket.on('disconnect', () => {
         const peer = peers.get(socket.id);
         if (peer) {
-            console.log(`[Socket] User ${socket.id} disconnected. Cleaning up SFU resources.`);
-
-            // close all producers, consumers, and transports
+            console.log(`[Socket] User ${socket.id} disconnected.`);
             peer.producers.forEach((p, producerId) => {
-                socket.to(peer.roomId).emit('producer-closed', { producerId, displayName: peer.displayName });
+                // Include socketId so clients can remove the correct UI card
+                socket.to(peer.roomId).emit('producer-closed', {
+                    producerId,
+                    socketId: socket.id,
+                    displayName: peer.displayName
+                });
                 p.close();
             });
             peer.transports.forEach(t => t.close());
-
-            // remove peer from local state
             peers.delete(socket.id);
-
-            // Broadcast room update to all clients for live preview
             io.emit('room-update', { roomId: peer.roomId });
         }
     });
 }
 
-module.exports = {
-    handleConnection,
-};
+module.exports = { handleConnection };

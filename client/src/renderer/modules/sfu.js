@@ -134,8 +134,9 @@ class SFUManager {
     /**
      * Consumes a specific producer from the server.
      * @param {string} producerId - The ID of the media source.
+     * @param {string} socketId - The owner's socket ID (for UI mapping).
      */
-    async consume(producerId) {
+    async consume(producerId, socketId) {
         try {
             // 1. Request consumer parameters from the server
             const params = await socketManager.consume(this.recvTransport.id, producerId, this.device.rtpCapabilities);
@@ -150,7 +151,6 @@ class SFUManager {
             const { track } = consumer;
 
             // 5. ATTACH TO DOM: Create an audio element to play the sound
-            // Mediasoup-client provides the track, but we must link it to a MediaStream.
             const stream = new MediaStream([track]);
 
             let remoteAudio = document.getElementById(`remote-audio-${producerId}`);
@@ -161,14 +161,14 @@ class SFUManager {
                 if (container) {
                     container.appendChild(remoteAudio);
                 } else {
-                    console.error('[SFU] audioContainer not found! Appending to body fallback.');
+                    // console.error('[SFU] audioContainer not found! Appending to body fallback.');
                     document.body.appendChild(remoteAudio);
                 }
             }
 
             remoteAudio.srcObject = stream;
             remoteAudio.controls = false;
-            remoteAudio.style.display = 'none'; // Completely hide it, we have our own UI
+            remoteAudio.style.display = 'none';
 
             // Respect global deafen state
             remoteAudio.muted = this.isDeafenedGlobal;
@@ -180,10 +180,12 @@ class SFUManager {
                     await remoteAudio.play();
                     console.log(`[SFU] Audio started for producer: ${producerId}`);
 
-                    // Start audio analysis for the remote peer's meter
-                    audioAnalyzer.analyze(producerId, stream, (level) => {
-                        uiManager.updateAudioLevel(producerId, level);
-                    });
+                    // Start audio analysis for the remote peer's meter using SOCKET ID
+                    if (socketId) {
+                        audioAnalyzer.analyze(socketId, stream, (level) => {
+                            uiManager.updateAudioLevel(socketId, level);
+                        });
+                    }
 
                 } catch (error) {
                     console.warn('[SFU] Autoplay prevented:', error);
