@@ -143,17 +143,26 @@ class SFUManager {
      */
     async consume(producerId, socketId) {
         try {
+            console.log(`[SFU] Consuming producer: ${producerId} for socket: ${socketId}`);
+
             // 1. Request consumer parameters from the server
             const params = await socketManager.consume(this.recvTransport.id, producerId, this.device.rtpCapabilities);
 
             // 2. Create local consumer via the receive transport
             const consumer = await this.recvTransport.consume(params);
+            console.log(`[SFU] Consumer created: ${consumer.id}, Kind: ${consumer.kind}, Track Enabled: ${consumer.track.enabled}, ReadyState: ${consumer.track.readyState}`);
 
             // 3. Notify server to resume the consumer (consumers start paused by default)
             await socketManager.consumerResume(consumer.id);
+            console.log('[SFU] Consumer resumed on server.');
 
             // 4. Get the media track from the consumer
             const { track } = consumer;
+
+            // Monitor track state changes
+            track.onmute = () => console.warn(`[SFU] Track muted: ${track.id}`);
+            track.onunmute = () => console.log(`[SFU] Track unmuted: ${track.id}`);
+            track.onended = () => console.log(`[SFU] Track ended: ${track.id}`);
 
             // 5. ATTACH TO DOM: Create an audio element to play the sound
             const stream = new MediaStream([track]);
@@ -162,11 +171,15 @@ class SFUManager {
             if (!remoteAudio) {
                 remoteAudio = document.createElement('audio');
                 remoteAudio.id = `remote-audio-${producerId}`;
+                remoteAudio.setAttribute('autoplay', 'true');
+                remoteAudio.setAttribute('playsinline', 'true');
+
                 const container = document.getElementById('audioContainer');
                 if (container) {
+                    console.log(`[SFU] Appending audio element to #audioContainer for ${producerId}`);
                     container.appendChild(remoteAudio);
                 } else {
-                    // console.error('[SFU] audioContainer not found! Appending to body fallback.');
+                    console.error('[SFU] audioContainer not found! Appending to body fallback.');
                     document.body.appendChild(remoteAudio);
                 }
             }
@@ -180,10 +193,14 @@ class SFUManager {
 
             // 6. PLAY: Handle browser autoplay restrictions
             // Wait for metadata to ensure we are ready to play
-            remoteAudio.onloadedmetadata = async () => {
+            const playAudio = async () => {
                 try {
-                    await remoteAudio.play();
-                    console.log(`[SFU] Audio started for producer: ${producerId}`);
+                    if (remoteAudio.paused) {
+                        await remoteAudio.play();
+                        console.log(`[SFU] Audio started for producer: ${producerId}`);
+                    } else {
+                        console.log(`[SFU] Audio already playing for: ${producerId}`);
+                    }
 
                     // Start audio analysis for the remote peer's meter using SOCKET ID
                     if (socketId) {
@@ -194,18 +211,40 @@ class SFUManager {
 
                 } catch (error) {
                     console.warn('[SFU] Autoplay prevented:', error);
-                    // Create a manual play button
                     const btn = document.createElement('button');
-                    btn.innerText = `🔊 Oynat (${producerId})`;
+                    btn.innerText = `🔊 OYNAT (${producerId.substr(0, 4)})`;
                     btn.style.display = 'block';
-                    btn.style.marginTop = '5px';
+                    btn.style.margin = '10px';
+                    btn.style.padding = '10px';
+                    btn.style.background = 'red';
+                    btn.style.color = 'white';
+                    btn.style.zIndex = '9999';
+
                     btn.onclick = () => {
                         remoteAudio.play();
                         btn.remove();
                     };
-                    remoteAudio.parentNode.insertBefore(btn, remoteAudio.nextSibling);
+
+                    if (remoteAudio.parentNode) {
+                        remoteAudio.parentNode.insertBefore(btn, remoteAudio);
+                    }
                 }
             };
+
+            remoteAudio.onloadedmetadata = () => {
+                console.log(`[SFU] Audio metadata loaded for ${producerId}. Duration: ${remoteAudio.duration}, ReadyState: ${remoteAudio.readyState}`);
+                playAudio();
+            };
+
+            // Fallback: If onloadedmetadata doesn't fire fast enough or at all (sometimes happens with live streams)
+            // Try playing anyway after a short delay
+            setTimeout(() => {
+                if (remoteAudio.paused) {
+                    console.log('[SFU] Force attempting play via timeout...');
+                    playAudio();
+                }
+            }, 1000);
+
         } catch (error) {
             console.error('[SFU] Consume failed:', error);
         }

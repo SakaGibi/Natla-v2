@@ -7,6 +7,8 @@ import { sfuManager } from './modules/sfu.js';
 import { uiManager } from './modules/ui.js';
 import { audioAnalyzer } from './modules/audioAnalyzer.js';
 import { soundEffects } from './modules/soundEffects.js';
+import { chatService } from './modules/chatService.js';
+import { authService } from './modules/authService.js';
 
 soundEffects.init();
 
@@ -275,11 +277,33 @@ async function startApp() {
             btnConnect.innerText = "Bağlanıyor...";
 
             uiManager.clearAll(); // Clean up previous session UI
+            peerNames.clear(); // Clean up internal map
 
             // Already connected, just join room now
 
             // 1. Join room and get data
-            const { rtpCapabilities, existingProducers } = await socketManager.joinRoom(roomId, displayName, myProfilePic);
+            const { rtpCapabilities, existingProducers, messages } = await socketManager.joinRoom(roomId, displayName, myProfilePic);
+
+            // Enable Chat Inputs
+            document.getElementById('msgInput').disabled = false;
+            document.getElementById('btnSend').disabled = false;
+
+            // Render History
+            if (messages && Array.isArray(messages)) {
+                // Clear previous history (except welcome msg if any, or just clear all)
+                // Let's keep the welcome message or clear it.
+                // document.getElementById('chatHistory').innerHTML = ''; 
+                messages.forEach(msg => {
+                    renderMessage(msg);
+                });
+
+                // Since I cannot move code easily without big diffs, 
+                // I will solve this by triggering the layout update in the next step.
+                // For now, I'll just save messages to a global variable or handle it later.
+
+                // ACTUALLY, I will dispatch a custom event that my listener will pick up (if I had one),
+                // but simpler: I will add `renderMessage(msg)` here and ensure `renderMessage` is defined in scope.
+            }
 
             // Save username for next time
             localStorage.setItem('natla_username', displayName);
@@ -301,11 +325,8 @@ async function startApp() {
             currentRoom = roomId;
 
             // Process existing peers
-            (existingProducers || []).forEach(p => {
-                const producerId = p.producerId || p;
-                const peerName = p.displayName || `User-${producerId.substr(0, 4)}`;
-                peerNames.set(producerId, peerName);
-            });
+            // (Removed incorrect loop that was populating peerNames with producerId instead of socketId)
+            currentRoom = roomId;
 
             updateRoomStatus();
 
@@ -359,11 +380,16 @@ async function startApp() {
                 updateRoomStatus();
                 showNotification(`${name} Odaya Katıldı`, "#2ecc71", 2000);
 
-                // Establish media connection
-                await sfuManager.consume(producerId, socketId);
-
-                // Add the user card using socketId for state synchronization
+                // Add the user card IMMEDIATELY (using socketId as key)
                 uiManager.addPeer(socketId, name, false, profilePic);
+
+                // Establish media connection
+                try {
+                    await sfuManager.consume(producerId, socketId);
+                } catch (err) {
+                    console.error("[App] Consume failed:", err);
+                    showNotification("Ses bağlantısı başarısız", "#e74c3c");
+                }
             });
 
             socketManager.socket.on('producer-closed', ({ producerId, socketId, displayName }) => {
@@ -395,6 +421,13 @@ async function startApp() {
             statusDisplay.innerText = `Hata: ${err.message || err}`;
             btnConnect.disabled = false;
             btnConnect.innerText = "Katıl";
+
+            // Auto-recovery for Auth issues
+            if (err.message && (err.message.includes('Unauthorized') || err.message.includes('Auth failed'))) {
+                console.warn('[App] Authentication failed. Clearing session and reloading...');
+                localStorage.removeItem('natla_session');
+                setTimeout(() => window.location.reload(), 2000);
+            }
         }
     });
 
@@ -404,6 +437,107 @@ async function startApp() {
     btnDisconnect.addEventListener('click', () => {
         window.location.reload();
     });
+
+    // --- CHAT LOGIC ---
+    const msgInput = document.getElementById('msgInput');
+    const btnSend = document.getElementById('btnSend');
+    const btnAttach = document.getElementById('btnAttach');
+    const fileInput = document.getElementById('fileInput');
+    const chatHistory = document.getElementById('chatHistory');
+
+    // UI Helper: Scroll to bottom
+    const scrollToBottom = () => {
+        chatHistory.scrollTop = chatHistory.scrollHeight;
+    };
+
+    // UI Helper: Render Message
+    const renderMessage = (data) => {
+        const { senderId, senderName, type, content, createdAt } = data;
+        const isMe = senderId === authService.getUserId();
+
+        const msgDiv = document.createElement('div');
+        msgDiv.className = `message ${isMe ? 'sent' : 'received'}`;
+
+        const time = new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const nameDisplay = isMe ? 'Ben' : senderName || 'Anonim';
+
+        let bodyHtml = '';
+        if (type === 'text') {
+            bodyHtml = `<div class="text">${content.text}</div>`;
+        } else if (type === 'file') {
+            const { fileName, size, fileId, mimeType } = content.file;
+            const sizeStr = chatService.formatFileSize(size);
+            const url = chatService.getFileUrl(fileId);
+
+            // Image Preview
+            if (mimeType.startsWith('image/')) {
+                bodyHtml = `
+                    <div class="file-attachment">
+                        <img src="${url}" alt="${fileName}" style="max-width: 200px; border-radius: 8px; cursor: pointer;" onclick="window.open('${url}', '_blank')">
+                        <div class="file-info">
+                            <span>📷 ${fileName} (${sizeStr})</span>
+                        </div>
+                    </div>`;
+            } else {
+                // Generic File
+                bodyHtml = `
+                    <div class="file-attachment">
+                        <a href="${url}" target="_blank" class="file-link">
+                            📁 ${fileName} <small>(${sizeStr})</small>
+                        </a>
+                    </div>`;
+            }
+        }
+
+        msgDiv.innerHTML = `
+            <div class="msg-header">
+                <span class="sender">${nameDisplay}</span>
+                <span class="time">${time}</span>
+            </div>
+            ${bodyHtml}
+        `;
+
+        chatHistory.appendChild(msgDiv);
+        scrollToBottom();
+    };
+
+    // Chat: Listen for incoming
+    socketManager.onChatMessage((data) => {
+        renderMessage(data);
+    });
+
+    // Event: Click Send
+    btnSend.addEventListener('click', () => {
+        const text = msgInput.value;
+        if (text.trim()) {
+            chatService.sendText(currentRoom, text);
+            msgInput.value = '';
+        }
+    });
+
+    // Event: Enter Key
+    msgInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') btnSend.click();
+    });
+
+    // Event: Attach File
+    btnAttach.addEventListener('click', () => fileInput.click());
+
+    fileInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        // Visual feedback
+        btnAttach.innerText = "⏳";
+        btnAttach.disabled = true;
+
+        await chatService.uploadAndSend(currentRoom, file);
+
+        btnAttach.innerText = "📁";
+        btnAttach.disabled = false;
+        fileInput.value = null;
+    });
+
 }
 
 startApp();

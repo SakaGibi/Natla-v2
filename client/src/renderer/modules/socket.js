@@ -4,6 +4,7 @@
  */
 
 import { io } from "https://cdn.socket.io/4.7.2/socket.io.esm.min.js";
+import { authService } from "./authService.js";
 
 class SocketManager {
     constructor() {
@@ -14,10 +15,16 @@ class SocketManager {
      * Connect to the SFU Server
      * @param {string} url - The server URL (e.g., http://localhost:3030)
      */
-    connect(url) {
+    async connect(url) {
+        // Ensure we have a valid session before connecting
+        const session = await authService.init();
+
         return new Promise((resolve, reject) => {
             this.socket = io(url, {
-                transports: ['websocket']
+                transports: ['websocket'],
+                auth: {
+                    token: session?.token
+                }
             });
 
             this.socket.on("connect", () => {
@@ -27,6 +34,9 @@ class SocketManager {
 
             this.socket.on("connect_error", (error) => {
                 console.error("[Socket] Connection error:", error);
+
+                // If auth failed, we might want to clear session and retry?
+                // But let's keep it simple for now. 
                 reject(error);
             });
         });
@@ -35,7 +45,7 @@ class SocketManager {
     /**
      * Request to join a specific room
      * @param {string} roomId - The room name (room1, room2, etc.)
-     * @returns {Promise} - Returns server's RTP Capabilities
+     * @returns {Promise} - Returns server's RTP Capabilities & History
      */
     joinRoom(roomId, displayName, profilePic) {
         return new Promise((resolve, reject) => {
@@ -49,6 +59,32 @@ class SocketManager {
             });
         });
     }
+
+    /**
+     * Send a chat message
+     * @param {string} roomId 
+     * @param {string} message Text content 
+     * @param {string} type 'text' | 'file'
+     * @param {Object} fileData { fileId, fileName, ... }
+     */
+    sendMessage(roomId, message, type = 'text', fileData = null) {
+        if (this.socket) {
+            this.socket.emit('chat-message', {
+                roomId,
+                message,
+                type,
+                fileData
+            });
+        }
+    }
+
+    // Helper to listen for chat messages
+    onChatMessage(callback) {
+        if (this.socket) {
+            this.socket.on('chat-message', callback);
+        }
+    }
+
 
     /**
      * Request the server to create a WebRTC Transport
@@ -113,7 +149,10 @@ class SocketManager {
         return new Promise((resolve, reject) => {
             this.socket.emit('consumerResume', { consumerId }, (response) => {
                 if (response && response.error) {
+                    console.error(`[Socket] consumerResume error: ${response.error}`);
                     reject(response.error);
+                } else {
+                    resolve();
                 }
             });
         });
