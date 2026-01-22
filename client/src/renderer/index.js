@@ -9,6 +9,7 @@ import { audioAnalyzer } from './modules/audioAnalyzer.js';
 import { soundEffects } from './modules/soundEffects.js';
 import { chatService } from './modules/chatService.js';
 import { authService } from './modules/authService.js';
+import { settingsManager } from './modules/settings.js';
 
 soundEffects.init();
 
@@ -511,9 +512,6 @@ async function startApp() {
         // Allow Left-Click to toggle ONLY if selection mode is active (at least one selected)
         msgDiv.addEventListener('click', (e) => {
             if (selectedMessageIds.size > 0) {
-                // Prevent default actions like opening images if selecting
-                // e.preventDefault(); // Maybe not, depends on UX. Let's strictly use contextmenu for now or allow mixed.
-                // Let's go with: if selection mode is active, click toggles.
                 if (!e.target.closest('a') && !e.target.closest('img')) { // distinct check to allow opening links
                     toggleMessageSelection(msgDiv, _id);
                 }

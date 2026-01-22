@@ -36,59 +36,87 @@
         </div>
 
         <!-- Settings Modal -->
-        <div id="passwordModal"
-            style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 9999; justify-content: center; align-items: center; flex-direction: column;">
-            <div
-                style="background: #2b2b2b; padding: 30px; border-radius: 12px; border: 1px solid #444; text-align: left; box-shadow: 0 10px 30px rgba(0,0,0,0.5); width: 400px; position: relative;">
-                <!-- Close Button -->
-                <button id="btnCloseSettings"
-                    style="position: absolute; top: 10px; right: 10px; background: none; border: none; color: #888; cursor: pointer; font-size: 20px;">✖</button>
-                <h3 style="color: #fff; margin-bottom: 20px; font-family: sans-serif; text-align: center;">⚙️ Sunucu
-                    Ayarları</h3>
+        <div id="settingsModal" class="modal-overlay">
+            <div class="settings-modal-content">
+                <button id="btnCloseSettings" class="modal-close-btn">×</button>
 
-                <!-- Server Inputs -->
-                <label style="color: #bbb; font-size: 12px; display:block; margin-bottom:5px;">Sunucu Adresi
-                    (ws://...)</label>
-                <input type="text" id="serverInput" value="" placeholder="ws://ip_adresi:port"
-                    style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #555; background: #1a1a1a; color: white; margin-bottom: 15px; outline: none;">
+                <div class="modal-header">
+                    <h3>⚙️ Sunucu Ayarları</h3>
+                </div>
 
-                <label style="color: #bbb; font-size: 12px; display:block; margin-bottom:5px;">Erişim Anahtarı</label>
-                <input type="password" id="keyInput" placeholder="Sunucu Şifresi..."
-                    style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #555; background: #1a1a1a; color: white; margin-bottom: 20px; outline: none;">
+                <!-- Top Section: Grid (Server Info & Stats) -->
+                <div class="settings-grid">
+                    <!-- Left Column: Server Settings -->
+                    <div class="settings-col">
+                        <label>Sunucu Adresi</label>
+                        <input type="text" id="serverInput" class="settings-input" placeholder="ws://ip:port">
 
-                <button id="btnSaveKey"
-                    style="background: #2ecc71; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%; margin-bottom: 20px;">AYARLARI
-                    KAYDET</button>
+                        <label>Erişim Anahtarı</label>
+                        <input type="password" id="keyInput" class="settings-input" placeholder="••••">
 
-                <!-- Network Stats Section (Moved from Overlay) -->
-                <div style="border-top: 1px solid #444; padding-top: 15px; margin-bottom: 5px;">
-                    <label style="color: #bbb; font-size: 12px; display:block; margin-bottom:5px;">Ağ
-                        İstatistikleri</label>
-                    <div id="networkStats"
-                        style="background: #111; color: #0f0; padding: 10px; border-radius: 6px; font-family: monospace; font-size: 11px; border: 1px dashed #333; min-height: 40px;">
-                        Bağlantı bekleniyor...
+                        <button id="btnSaveKey" class="btn-save-settings">KAYDET</button>
+                    </div>
+
+                    <!-- Right Column: Network Stats -->
+                    <div class="settings-col">
+                        <label>Ağ İstatistikleri</label>
+                        <div id="networkStats" class="network-stats-box">
+                            <div class="stat-line"><span class="stat-label">Bitrate:</span> <span
+                                    class="stat-val green">0 kbps</span></div>
+                            <div class="stat-line"><span class="stat-label">Ping:</span> <span class="stat-val green">0
+                                    ms</span></div>
+                            <div class="stat-line"><span class="stat-label">Loss:</span> <span
+                                    class="stat-val green">%0.0</span></div>
+                            <div class="stat-line"><span class="stat-label">Peers:</span> <span
+                                    class="stat-val green">0</span></div>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Update Section -->
-                <div id="updateSection" style="border-top: 1px solid #444; padding-top: 15px;">
-                    <label style="color: #bbb; font-size: 12px; display:block; margin-bottom:10px;">Uygulama
-                        Güncelleme</label>
-                    <div style="display: flex; flex-direction: column; gap: 8px;">
-                        <button id="btnCheckUpdate"
-                            style="background: #3498db; color: white; border: none; padding: 8px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold;">Güncellemeleri
-                            Kontrol Et</button>
-                        <button id="btnInstallUpdate"
-                            style="display: none; background: #e67e22; color: white; border: none; padding: 8px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold;">Güncellemeyi
-                            Yükle ve Yeniden Başlat</button>
-                        <span id="updateStatus" style="font-size: 11px; color: #888; text-align: center;">Sürüm
-                            yükleniyor...</span>
+                <hr class="settings-divider">
 
-                        <!-- Reset Soundpad -->
-                        <button id="btnResetSoundpad"
-                            style="background: #e74c3c; color: white; border: none; padding: 8px; border-radius: 6px; cursor: pointer; font-size: 12px; margin-top: 5px;">Soundpad'i
-                            Sıfırla (Varsayılan)</button>
-                    </div>
+                <!-- Audio Settings Section -->
+                <div class="section-label">Ses Ayarları</div>
+
+                <!-- Mic Selection -->
+                <div class="audio-row">
+                    <div class="icon-label">🎤 Giriş:</div>
+                    <select id="micSelect" class="settings-select">
+                        <option value="">Varsayılan Mikrofon</option>
+                    </select>
+                </div>
+
+                <!-- Speaker Selection -->
+                <div class="audio-row">
+                    <div class="icon-label">🎧 Çıkış:</div>
+                    <select id="speakerSelect" class="settings-select">
+                        <option value="">Varsayılan Hoparlör</option>
+                    </select>
+                </div>
+
+                <!-- Mic Volume -->
+                <div class="audio-row">
+                    <div class="icon-label">🎤 Mic Ses:</div>
+                    <input type="range" id="micVolume" class="styled-slider" min="0" max="200" value="100">
+                    <span id="micVolumeVal" class="slider-val-text">100%</span>
+                </div>
+
+                <!-- Master Volume -->
+                <div class="audio-row">
+                    <div class="icon-label">🎧 Genel Ses:</div>
+                    <input type="range" id="masterVolume" class="styled-slider" min="0" max="200" value="100">
+                    <span id="masterVolumeVal" class="slider-val-text">100%</span>
+                </div>
+
+                <hr class="settings-divider">
+
+                <!-- Maintenance / Updates -->
+                <div class="section-label">Uygulama Güncelleme</div>
+                <div class="maintenance-section">
+                    <button id="btnCheckUpdate" class="btn-blue-block">Güncellemeleri Kontrol Et</button>
+                    <div class="update-status-text">Uygulama güncel: v3.4.1</div>
+
+                    <button id="btnResetSoundpad" class="btn-red-block">Soundpad'i Sıfırla (Varsayılan)</button>
                 </div>
             </div>
         </div>
@@ -164,33 +192,7 @@
             </div>
         </div>
 
-        <!-- Audio Settings Panel -->
-        <div id="settingsPanel">
-            <!-- Input/Output Selection -->
-            <div class="slider-group">
-                <label>🎤 Giriş:</label>
-                <select id="micSelect" class="device-select">
-                    <option value="">Varsayılan Mikrofon</option>
-                </select>
-            </div>
-            <div class="slider-group">
-                <label>🎧 Çıkış:</label>
-                <select id="speakerSelect" class="device-select">
-                    <option value="">Varsayılan Hoparlör</option>
-                </select>
-            </div>
-            <!-- Volume Controls -->
-            <div class="slider-group">
-                <label>🎤 Mic Ses:</label>
-                <input type="range" id="micVolume" min="0" max="300" value="100">
-                <span id="micVal" class="slider-val">100%</span>
-            </div>
-            <div class="slider-group">
-                <label>🎧 Genel Ses:</label>
-                <input type="range" id="masterVolume" min="0" max="300" value="100">
-                <span id="masterVal" class="slider-val">100%</span>
-            </div>
-        </div>
+
 
         <!-- Users & Soundpad Section -->
         <div id="users">
