@@ -12,30 +12,13 @@ const peers = new Map();
 
 function handleConnection(socket, io) {
 
-    // --- MIDDLEWARE-LIKE AUTH CHECK ---
-    // We do this check right upon connection logic or use io.use() in main.js
-    // Since we are passed the socket here, we can check auth data immediately.
-    // Ideally, io.use() in main.js is better, but this works too if we disconnect invalid sockets.
-
     // Check auth token
     const token = socket.handshake.auth.token;
     let userId = null;
 
-    // We need to make this async compatible, but socket handlers are sync setup.
-    // So we perform the check and if it fails, we disconnect.
     (async () => {
         if (!token) {
             console.log(`[Socket] Auth failed for ${socket.id}: No token`);
-            // We allow connection without token for now for backward compatibility if needed? 
-            // NO, per requirements strict auth.
-            // But wait, existing code might not send token yet. 
-            // For now, if no token, we treat as Anonymous/Legacy or disconnect?
-            // "The plan says strict session validation." -> We disconnect.
-            // socket.disconnect(); 
-            // return;
-
-            // Actually, let's allow it but they can't send messages.
-            // Or better, let's stick to the plan: Client sends token.
         }
 
         if (token) {
@@ -115,7 +98,16 @@ function handleConnection(socket, io) {
             });
 
             // Fetch Message History
-            const messages = await database.getMessages(roomId, 50);
+            let messages = await database.getMessages(roomId, 50);
+
+            // Filter hidden messages
+            if (socket.userId && messages.length > 0) {
+                const messageIds = messages.map(m => m._id.toString());
+                const hiddenIds = await database.getHiddenMessageIds(socket.userId, messageIds);
+                if (hiddenIds.size > 0) {
+                    messages = messages.filter(m => !hiddenIds.has(m._id.toString()));
+                }
+            }
 
             callback({
                 rtpCapabilities: router.rtpCapabilities,
@@ -167,6 +159,34 @@ function handleConnection(socket, io) {
 
         } catch (err) {
             console.error('Save message error:', err);
+        }
+    });
+
+    // --- NEW: DELETE MESSAGE FOR ME ---
+    socket.on('deleteMessageForMe', async ({ messageId }, callback) => {
+        try {
+            if (!socket.userId) {
+                return callback({ error: 'Unauthorized' });
+            }
+            const success = await database.hideMessage(socket.userId, messageId);
+            callback({ success, messageId });
+        } catch (error) {
+            console.error('Delete Message Error:', error);
+            callback({ error: error.message });
+        }
+    });
+
+    // --- NEW: DELETE ALL MESSAGES FOR ME ---
+    socket.on('deleteRoomHistoryForMe', async ({ roomId }, callback) => {
+        try {
+            if (!socket.userId) {
+                return callback({ error: 'Unauthorized' });
+            }
+            const success = await database.hideAllMessages(socket.userId, roomId);
+            callback({ success, roomId });
+        } catch (error) {
+            console.error('Delete All Error:', error);
+            callback({ error: error.message });
         }
     });
 

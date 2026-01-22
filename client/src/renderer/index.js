@@ -276,10 +276,8 @@ async function startApp() {
             btnConnect.disabled = true;
             btnConnect.innerText = "Bağlanıyor...";
 
-            uiManager.clearAll(); // Clean up previous session UI
-            peerNames.clear(); // Clean up internal map
-
-            // Already connected, just join room now
+            uiManager.clearAll();
+            peerNames.clear();
 
             // 1. Join room and get data
             const { rtpCapabilities, existingProducers, messages } = await socketManager.joinRoom(roomId, displayName, myProfilePic);
@@ -290,19 +288,9 @@ async function startApp() {
 
             // Render History
             if (messages && Array.isArray(messages)) {
-                // Clear previous history (except welcome msg if any, or just clear all)
-                // Let's keep the welcome message or clear it.
-                // document.getElementById('chatHistory').innerHTML = ''; 
                 messages.forEach(msg => {
                     renderMessage(msg);
                 });
-
-                // Since I cannot move code easily without big diffs, 
-                // I will solve this by triggering the layout update in the next step.
-                // For now, I'll just save messages to a global variable or handle it later.
-
-                // ACTUALLY, I will dispatch a custom event that my listener will pick up (if I had one),
-                // but simpler: I will add `renderMessage(msg)` here and ensure `renderMessage` is defined in scope.
             }
 
             // Save username for next time
@@ -325,7 +313,6 @@ async function startApp() {
             currentRoom = roomId;
 
             // Process existing peers
-            // (Removed incorrect loop that was populating peerNames with producerId instead of socketId)
             currentRoom = roomId;
 
             updateRoomStatus();
@@ -450,13 +437,88 @@ async function startApp() {
         chatHistory.scrollTop = chatHistory.scrollHeight;
     };
 
+    // --- MESSAGE SELECTION & DELETION ---
+    const selectedMessageIds = new Set();
+    const btnDeleteSelected = document.getElementById('btnDeleteSelected');
+    const selectedCountSpan = document.getElementById('selectedCount');
+
+    const updateDeleteButton = () => {
+        const count = selectedMessageIds.size;
+        selectedCountSpan.innerText = count;
+        if (count > 0) {
+            btnDeleteSelected.classList.add('visible');
+        } else {
+            btnDeleteSelected.classList.remove('visible');
+        }
+    };
+
+    const toggleMessageSelection = (msgDiv, messageId) => {
+        if (selectedMessageIds.has(messageId)) {
+            selectedMessageIds.delete(messageId);
+            msgDiv.classList.remove('selected');
+        } else {
+            selectedMessageIds.add(messageId);
+            msgDiv.classList.add('selected');
+        }
+        updateDeleteButton();
+    };
+
+    // Handle Delete Action
+    btnDeleteSelected.addEventListener('click', async () => {
+        if (selectedMessageIds.size === 0) return;
+
+        if (!confirm(`${selectedMessageIds.size} mesajı silmek istediğinize emin misiniz? (Sadece sizden silinir)`)) {
+            return;
+        }
+
+        const idsToDelete = Array.from(selectedMessageIds);
+
+        // Optimistic UI Update: Remove immediately
+        idsToDelete.forEach(id => {
+            const msgDiv = document.querySelector(`.message[data-id="${id}"]`);
+            if (msgDiv) msgDiv.remove();
+        });
+
+        // Send to server
+        // We do this individually for now as the API is single-item, 
+        // but we could batch it if we updated the server. 
+        // For 30 days TTL per user hidden messages, batched is better but loop is fine for now.
+        for (const messageId of idsToDelete) {
+            socketManager.socket.emit('deleteMessageForMe', { messageId }, (response) => {
+                if (response.error) console.error('Delete error for', messageId, response.error);
+            });
+        }
+
+        selectedMessageIds.clear();
+        updateDeleteButton();
+    });
+
     // UI Helper: Render Message
     const renderMessage = (data) => {
-        const { senderId, senderName, type, content, createdAt } = data;
+        const { _id, senderId, senderName, type, content, createdAt } = data; // Ensure _id is destructive from data
         const isMe = senderId === authService.getUserId();
 
         const msgDiv = document.createElement('div');
         msgDiv.className = `message ${isMe ? 'sent' : 'received'}`;
+        msgDiv.dataset.id = _id; // Store ID for selection
+
+        // Right-Click Selection
+        msgDiv.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            toggleMessageSelection(msgDiv, _id);
+        });
+
+        // Allow Left-Click to toggle ONLY if selection mode is active (at least one selected)
+        msgDiv.addEventListener('click', (e) => {
+            if (selectedMessageIds.size > 0) {
+                // Prevent default actions like opening images if selecting
+                // e.preventDefault(); // Maybe not, depends on UX. Let's strictly use contextmenu for now or allow mixed.
+                // Let's go with: if selection mode is active, click toggles.
+                if (!e.target.closest('a') && !e.target.closest('img')) { // distinct check to allow opening links
+                    toggleMessageSelection(msgDiv, _id);
+                }
+            }
+        });
 
         const time = new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         const nameDisplay = isMe ? 'Ben' : senderName || 'Anonim';
@@ -506,11 +568,62 @@ async function startApp() {
         renderMessage(data);
     });
 
+    // --- SLASH COMMANDS ---
+    const handleCommand = (text) => {
+        const cmd = text.trim().toLowerCase();
+
+        if (cmd === '/help') {
+            const helpMsg = `
+                <div style="background: rgba(0,0,0,0.5); padding: 10px; border-radius: 8px; border: 1px solid #444;">
+                    <strong>🛠️ Natla Komutları</strong>
+                    <ul style="margin: 5px 0; padding-left: 20px;">
+                        <li><strong>/help</strong>: Bu yardım ekranını gösterir.</li>
+                        <li><strong>/clear</strong>: O anki oda sohbet geçmişini sizin için temizler.</li>
+                    </ul>
+                    <hr style="border:0; border-top:1px solid #555; margin: 8px 0;">
+                    <strong>🗑️ Mesaj Silme:</strong>
+                    <br>
+                    Mesajlara <strong>Sağ Tıklayarak</strong> seçebilir ve sağ altta çıkan butona basarak silebilirsiniz.
+                </div>
+            `;
+            // Render local system message
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'message received system-msg';
+            msgDiv.style.background = 'transparent';
+            msgDiv.innerHTML = helpMsg;
+            chatHistory.appendChild(msgDiv);
+            scrollToBottom();
+            return true;
+        }
+
+        if (cmd === '/clear') {
+            if (confirm('Bu odadaki tüm mesaj geçmişini kendin için silmek istediğine emin misin?')) {
+                // Backend Call
+                socketManager.socket.emit('deleteRoomHistoryForMe', { roomId: currentRoom }, (response) => {
+                    if (response.success) {
+                        chatHistory.innerHTML = ''; // Clear DOM
+                        const infoDiv = document.createElement('div');
+                        infoDiv.className = 'message received system-msg';
+                        infoDiv.innerText = '🗑️ Sohbet geçmişi temizlendi.';
+                        chatHistory.appendChild(infoDiv);
+                    } else {
+                        alert('Silme işlemi başarısız oldu.');
+                    }
+                });
+            }
+            return true;
+        }
+
+        return false; // Not a command
+    };
+
     // Event: Click Send
     btnSend.addEventListener('click', () => {
         const text = msgInput.value;
         if (text.trim()) {
-            chatService.sendText(currentRoom, text);
+            if (!handleCommand(text)) {
+                chatService.sendText(currentRoom, text);
+            }
             msgInput.value = '';
         }
     });

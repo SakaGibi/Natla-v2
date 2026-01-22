@@ -7,7 +7,7 @@ dist/
 release/
 *.asar
 
-# Environment Variables (Kritik: AWS anahtarları veya özel IP'ler buraya girer)
+# Environment Variables
 .env
 
 # OS specific
@@ -19,3 +19,6 @@ server/lib/
 
 # notes
 mimari.txt
+
+# uploads
+uploads/

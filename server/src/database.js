@@ -30,9 +30,17 @@ const MessageSchema = new mongoose.Schema({
 });
 MessageSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
+const HiddenMessageSchema = new mongoose.Schema({
+    userId: { type: String, required: true },
+    messageId: { type: String, required: true },
+    hiddenAt: { type: Date, default: Date.now, expires: 30 * 24 * 60 * 60 } // 30 days TTL
+});
+HiddenMessageSchema.index({ userId: 1, messageId: 1 }, { unique: true });
+
 // Models
 const Session = mongoose.model('Session', SessionSchema);
 const Message = mongoose.model('Message', MessageSchema);
+const HiddenMessage = mongoose.model('HiddenMessage', HiddenMessageSchema);
 
 // Functions
 
@@ -116,10 +124,79 @@ async function getMessages(roomId, limit = 50) {
         .limit(limit);
 }
 
+/**
+ * Hide a message for a specific user
+ * @param {string} userId 
+ * @param {string} messageId 
+ */
+async function hideMessage(userId, messageId) {
+    try {
+        await HiddenMessage.create({
+            userId,
+            messageId,
+            hiddenAt: new Date()
+        });
+        return true;
+    } catch (err) {
+        if (err.code === 11000) return true; // Already hidden
+        console.error('Error hiding message:', err);
+        return false;
+    }
+}
+
+/**
+ * Get set of hidden message IDs for a user from a list of potential message IDs
+ * @param {string} userId 
+ * @param {Array<string>} messageIds 
+ * @returns {Promise<Set<string>>}
+ */
+async function getHiddenMessageIds(userId, messageIds) {
+    if (!messageIds || messageIds.length === 0) return new Set();
+
+    const hidden = await HiddenMessage.find({
+        userId,
+        messageId: { $in: messageIds }
+    });
+
+    return new Set(hidden.map(h => h.messageId));
+}
+
+/**
+ * Hide ALL messages in a room for a specific user
+ * @param {string} userId 
+ * @param {string} roomId 
+ */
+async function hideAllMessages(userId, roomId) {
+    try {
+        const messages = await Message.find({ roomId }, { _id: 1 });
+        if (messages.length === 0) return true;
+
+        const hiddenDocs = messages.map(m => ({
+            userId,
+            messageId: m._id.toString(),
+            hiddenAt: new Date()
+        }));
+
+        // Efficient Bulk Write (Ordered: false to ignore duplicates)
+        await HiddenMessage.insertMany(hiddenDocs, { ordered: false });
+        return true;
+    } catch (err) {
+        // Ignore duplicate key errors (code 11000)
+        if (err.code !== 11000 && (!err.writeErrors || err.writeErrors.some(e => e.code !== 11000))) {
+            console.error('Error hiding all messages:', err);
+            return false;
+        }
+        return true;
+    }
+}
+
 module.exports = {
     connectDB,
     createSession,
     validateSession,
     saveMessage,
-    getMessages
+    getMessages,
+    hideMessage,
+    getHiddenMessageIds,
+    hideAllMessages
 };
